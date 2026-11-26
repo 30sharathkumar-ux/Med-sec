@@ -139,8 +139,29 @@ _LABELED_NAME_PATTERNS: list[tuple[str, re.Pattern[str]]] = [
     (
         "RELATIVE_NAME",
         re.compile(
-            r"(?i)(?:पिता(?:/पति)?\s*का\s*नाम|पति\s*का\s*नाम|Attendant|Guardian|Relative\s*Name)"
+            r"(?i)(?:(?:पिता|माता|माँ)(?:/(?:पति|पिता))?\s*का\s*नाम|"
+            r"(?:पति|पत्नी|भाई|बहन|बेटा|बेटी|दादा|दादी|नाना|नानी)\s*(?:का|की)\s*नाम|"
+            r"Attendant|Guardian|Relative\s*Name)"
             r"\s*[:\-]\s*(?:C/O\s*)?([^\n,|;।]+?)(?=\s{2,}|\s*(?:,|Mob|Mobile|Phone|Ward|\()|[\n|;।]|$)"
+        ),
+    ),
+    # Hinglish kinship relative frames: "maa ka naam Savitri Devi", "baap ka naam ...", "bhai ka naam ..."
+    (
+        "RELATIVE_NAME",
+        re.compile(
+            r"(?i)\b(?:maa|ma|baap|pita|pati|patni|bhai|behen|bahan|beta|beti|bahu|dada|dadi|nana|nani)\s+"
+            r"(?:ka|ki)\s+naam\s*[:\-]?\s*"
+            r"([A-Z\u0900-\u097f][a-zA-Z\u0900-\u097f.'-]+(?:\s+[A-Z\u0900-\u097f][a-zA-Z\u0900-\u097f.'-]+){0,2})"
+            r"(?=\s*(?:hai|tha|thi|hain|,|;|\.|।|\n|$))"
+        ),
+    ),
+    # Devanagari kinship relative frames without colon: "माता का नाम सावित्री देवी है"
+    (
+        "RELATIVE_NAME",
+        re.compile(
+            r"(?:माता|माँ|पिता|पति|पत्नी|भाई|बहन|बेटा|बेटी|दादा|दादी|नाना|नानी)\s+(?:का|की)\s+नाम\s+"
+            r"([\u0900-\u097f]{2,}(?:\s+[\u0900-\u097f]{2,}){0,2})"
+            r"(?=\s*(?:है|था|थी|हैं|,|;|\.|।|\n|$))"
         ),
     ),
     # Relation markers S/o, D/o, W/o, C/O (only if not protected clinical C/O complaint)
