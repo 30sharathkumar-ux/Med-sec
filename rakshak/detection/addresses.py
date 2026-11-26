@@ -27,11 +27,11 @@ _LOCALITY_RE = re.compile(
     r")"
 )
 
-# Landmarks (English + Hindi)
+# Landmarks (English + Hindi) — negative lookbehind prevents O(N^2) scanning on long tokens
 _LANDMARK_RE = re.compile(
     r"(?i)(?:"
-    r"\b(?:near|opp\.?|opposite|behind|beside|adjacent\s+to|in\s+front\s+of)\s+[^,\n;|]+|"
-    r"[^\s,;|]+(?:\s+[^\s,;|]+){0,3}\s+के\s+(?:पास|पीछे|सामने|बगल)"
+    r"\b(?:near|opp\.?|opposite|behind|beside|adjacent\s+to|in\s+front\s+of)\s+[^,\n;|]{1,80}|"
+    r"(?<![^\s,;|])[^\s,;|]{1,40}(?:\s+[^\s,;|]{1,40}){0,3}\s+के\s+(?:पास|पीछे|सामने|बगल)"
     r")"
 )
 

@@ -1,0 +1,50 @@
+{
+  "resourceType": "Bundle",
+  "type": "collection",
+  "entry": [
+    {
+      "resource": {
+        "resourceType": "Organization",
+        "name": "Hospital Alpha"
+      }
+    },
+    {
+      "resource": {
+        "resourceType": "Patient",
+        "identifier": [
+          {
+            "system": "urn:raksha:uhid",
+            "value": "ALPH-UHID-88412"
+          }
+        ],
+        "name": [
+          {
+            "text": "Zorawar Qureshi"
+          }
+        ],
+        "telecom": [
+          {
+            "system": "phone",
+            "value": "+91-9811223344"
+          }
+        ],
+        "gender": "male",
+        "birthDate": "1979-05-15",
+        "address": [
+          {
+            "city": "Biswan",
+            "postalCode": "261203"
+          }
+        ]
+      }
+    },
+    {
+      "resource": {
+        "resourceType": "Condition",
+        "code": {
+          "text": "Takayasu arteritis"
+        }
+      }
+    }
+  ]
+}

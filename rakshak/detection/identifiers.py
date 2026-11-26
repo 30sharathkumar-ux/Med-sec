@@ -25,7 +25,7 @@ _PHONE_RE = re.compile(
     r")"
     r"(?!\d)"
 )
-_EMAIL_RE = re.compile(r"[\w.+-]+@[\w-]+(?:\.[\w.-]+)+")
+_EMAIL_RE = re.compile(r"(?<![\w.+-])[\w.+-]{1,64}@[\w-]+(?:\.[\w.-]+)+")
 _PAN_RE = re.compile(r"\b[A-Z]{5}\d{4}[A-Z]\b")
 _INSURANCE_RE = re.compile(
     r"\b(?:"

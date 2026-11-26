@@ -57,6 +57,37 @@ _PATH_PII_RE = re.compile(
 )
 
 
+_SAFE_SCHEMA_TOKENS = _SAFE_FILENAME_TOKENS | frozenset({
+    "key", "col", "meta", "id", "age", "dob", "date", "type", "code", "status",
+    "value", "unit", "units", "resource", "resourcetype", "entry", "telecom",
+    "identifier", "organization", "condition", "observation", "encounter",
+    "practitioner", "gender", "birthdate", "birth", "postal", "postalcode",
+    "city", "district", "state", "country", "system", "text", "given", "family",
+    "address", "phone", "mobile", "email", "name", "first", "last", "full",
+    "relative", "guardian", "father", "mother", "husband", "wife", "spouse",
+    "diagnosis", "medication", "procedure", "vitals", "test", "tests", "panel",
+    "panels", "results", "visits", "billing", "amount", "package", "range",
+    "uhid", "mrn", "aadhaar", "abha", "pan", "insurance", "pin", "village",
+    "tehsil", "locality", "landmark", "house", "tag", "safe", "val",
+})
+
+
+def _extra_latin_keys(extra_names: set[str] | None) -> tuple[set[str], set[str]]:
+    """Return (exact_tokens, phonetic_keys) for Latin tokens in extra_names."""
+    exact: set[str] = set()
+    phonetic: set[str] = set()
+    if not extra_names:
+        return exact, phonetic
+    for nm in extra_names:
+        canon = canonical_latin_name(nm)
+        for tok in canon.split():
+            low = tok.lower()
+            if len(low) >= 3 and low not in NON_NAME_STOPWORDS and low not in _SAFE_SCHEMA_TOKENS:
+                exact.add(low)
+                phonetic.add(phonetic_token_key(low))
+    return exact, phonetic
+
+
 def _split_unicode_tokens(text: str) -> list[str]:
     """Extract Latin and Devanagari word tokens (handles camelCase, underscores, hyphens)."""
     norm = normalize_surface(text)
@@ -263,14 +294,21 @@ def sanitize_csv_header(
     pseudonym_lookup: Callable[[str], str | None] | None = None,
     extra_names: set[str] | None = None,
 ) -> list[str]:
-    """Sanitize CSV/TSV column headers that themselves embed PII (Latin or Devanagari)."""
+    """Sanitize CSV/TSV column headers that themselves embed PII (Latin, Devanagari, camelCase)."""
     out: list[str] = []
     seen: Counter[str] = Counter()
+    extra_exact, extra_phon = _extra_latin_keys(extra_names)
+
     for idx, col in enumerate(header):
         norm_col = normalize_digits(normalize_surface(col))
         has_id = bool(detect_identifier_spans(norm_col))
-        tokens = [t.lower() for t in re.split(r"[^A-Za-z]+", norm_col) if len(t) >= 3]
-        has_latin_name = any(t in LATIN_NAME_TOKENS and t not in NON_NAME_STOPWORDS for t in tokens)
+        tokens = [t.lower() for t in _split_unicode_tokens(col) if len(t) >= 3 and t.isascii()]
+        has_latin_name = any(
+            t not in NON_NAME_STOPWORDS and t not in _SAFE_SCHEMA_TOKENS and (
+                t in LATIN_NAME_TOKENS or t in extra_exact or phonetic_token_key(t) in extra_phon
+            )
+            for t in tokens
+        )
         has_deva_name = _has_deva_name_token(col, extra_names=extra_names)
         if not has_id and not has_latin_name and not has_deva_name:
             out.append(col)
@@ -283,11 +321,18 @@ def sanitize_csv_header(
             if has_id or has_deva_name:
                 cand = text_cleaner(cand).strip()
             if has_latin_name:
-                parts = re.split(r"(\s+|_|-)", cand)
+                # Split camelCase + separators so embedded names are replaced cleanly
+                camel_split = re.sub(r"([a-z])([A-Z])", r"\1_\2", cand)
+                parts = re.split(r"(\s+|_|-)", camel_split)
                 cleaned_parts = []
                 for part in parts:
                     low = part.lower().strip()
-                    if len(low) >= 3 and low in LATIN_NAME_TOKENS and low not in NON_NAME_STOPWORDS:
+                    if (
+                        len(low) >= 3
+                        and low not in NON_NAME_STOPWORDS
+                        and low not in _SAFE_SCHEMA_TOKENS
+                        and (low in LATIN_NAME_TOKENS or low in extra_exact or phonetic_token_key(low) in extra_phon)
+                    ):
                         cleaned_parts.append("[PATIENT_NAME]")
                     else:
                         cleaned_parts.append(part)
@@ -308,18 +353,28 @@ def sanitize_json_key(
     used_keys: set[str] | None = None,
     extra_names: set[str] | None = None,
 ) -> str:
-    """Sanitize a JSON object key when it contains PII (Latin, Devanagari, or identifiers)."""
+    """Sanitize a JSON object key when it contains PII (Latin, Devanagari, camelCase, or identifiers)."""
     norm_key = normalize_digits(normalize_surface(key))
     has_id = bool(detect_identifier_spans(norm_key))
-    tokens = [t.lower() for t in re.split(r"[^A-Za-z]+", norm_key) if len(t) >= 3]
-    has_latin_name = any(t in LATIN_NAME_TOKENS and t not in NON_NAME_STOPWORDS for t in tokens)
+    extra_exact, extra_phon = _extra_latin_keys(extra_names)
+    tokens = [t.lower() for t in _split_unicode_tokens(key) if len(t) >= 3 and t.isascii()]
+    has_latin_name = any(
+        t not in NON_NAME_STOPWORDS and t not in _SAFE_SCHEMA_TOKENS and (
+            t in LATIN_NAME_TOKENS or t in extra_exact or phonetic_token_key(t) in extra_phon
+        )
+        for t in tokens
+    )
     has_deva_name = _has_deva_name_token(key, extra_names=extra_names)
     if not has_id and not has_latin_name and not has_deva_name:
         return key
     pid = pseudonym_lookup(key) if pseudonym_lookup else None
-    new_key = pid if pid else text_cleaner(key).strip()
-    if new_key == key or not new_key:
-        new_key = "[REDACTED_KEY]"
+    if pid:
+        new_key = pid
+    else:
+        camel_split = re.sub(r"([a-z])([A-Z])", r"\1 \2", key)
+        new_key = text_cleaner(camel_split).strip()
+        if new_key == camel_split or new_key == key or not new_key:
+            new_key = "[REDACTED_KEY]"
     if used_keys is not None:
         base = new_key
         suffix = 2

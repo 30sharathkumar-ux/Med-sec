@@ -1,0 +1,20 @@
+{
+  "hospital": "Hospital Alpha",
+  "Key [PATIENT_NAME] Tag_meta": "[PATIENT_NAME]",
+  "patient": {
+    "name": "[PATIENT_NAME]",
+    "phone": "[PHONE]",
+    "uhid": "[MRN]",
+    "age": "45-49",
+    "dob": "1979-01-18"
+  },
+  "clinical": {
+    "diagnosis": "Takayasu arteritis",
+    "vitals": "BP 132/84 mmHg"
+  },
+  "attachment": {
+    "content_type": "text/plain",
+    "data_base64": "QXR0YWNobWVudCBQYXRpZW50OiBbUEFUSUVOVF9OQU1FXSBQaG9uZTogW1BIT05FXSBVSElEOiBbTVJOXQ=="
+  },
+  "patient_ref": "PSN-N1J5KZ"
+}

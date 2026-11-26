@@ -1,0 +1,135 @@
+{
+  "schema": "raksha-report/1",
+  "files": [
+    {
+      "input_sha256": "340ed43e020c8682f37dd95a5a45eb844c5b7952145bca0f0930ee438ef55f46",
+      "output": null,
+      "status": "quarantined",
+      "reason": "invalid_fhir_bundle"
+    },
+    {
+      "input_sha256": "938809eec1f526535179d81ae8e3eb3de1ad1fdd39f1304f338cd5203fc400eb",
+      "output": null,
+      "status": "quarantined",
+      "reason": "JSONDecodeError"
+    },
+    {
+      "input_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "output": null,
+      "status": "quarantined",
+      "reason": "empty_file"
+    },
+    {
+      "input_sha256": "39c9851ca13802b4ee43935f07c00bab611538472609dad5d02c55514298d548",
+      "output": "sanitized/cp1252.txt",
+      "status": "sanitized"
+    },
+    {
+      "input_sha256": "535435ed3d9f2f4a4dc447051536875cf3d2c56388629ff223578d16f2563643",
+      "output": "sanitized/deep/n1/n2/note.txt",
+      "status": "sanitized"
+    },
+    {
+      "input_sha256": "7dbb92cb62d5d1d5b0fff58cfab56d1fbdc7883602bb852c8eefb486ca4fde59",
+      "output": "sanitized/dir_a/dup.csv",
+      "status": "sanitized"
+    },
+    {
+      "input_sha256": "f9b0369a83b053794114537caee8c188dd0223dd9fe97e8ba84efa010d7c3d7a",
+      "output": "sanitized/dir_a/dup.csv",
+      "status": "sanitized",
+      "_alt": true
+    },
+    {
+      "input_sha256": "00a3a4d9fc24ac4c7ec43f34ed3b4e7d2c94cdfdef65fda30b06eae54a8479a8",
+      "output": "sanitized/dir_b/dup.csv",
+      "status": "sanitized"
+    },
+    {
+      "input_sha256": "9b60daabd12ab4a1248a63f316485dd7e127169d59905e2f2ff736029e293d30",
+      "output": "sanitized/dir_b/dup.csv",
+      "status": "sanitized",
+      "_alt": true
+    },
+    {
+      "input_sha256": "1e379f8293bec49a76c24ef4d0b4765d9361c30a072cc291edc40f65d5707a3c",
+      "output": "sanitized/large_100kb.txt",
+      "status": "sanitized"
+    },
+    {
+      "input_sha256": "5c4f382b20347c78f1a55e2b1ac4441a2f36f3a679c68ea77ba52cb96012b54d",
+      "output": "sanitized/large_100kb.txt",
+      "status": "sanitized",
+      "_alt": true
+    },
+    {
+      "input_sha256": "00d2dfcf6fc40ce13afe24cc37e3d52d70e029bd9a463bb4ed150b91827b27b1",
+      "output": "sanitized/line_20kb.txt",
+      "status": "sanitized"
+    },
+    {
+      "input_sha256": "585d165b5ccea201ae882d9be43990a5e8fccdaf5aa9f8864ee4113be0fbb9b8",
+      "output": "sanitized/line_5kb.txt",
+      "status": "sanitized"
+    },
+    {
+      "input_sha256": "b96d318120b1ce64d5a0a5fd9b89ae88a30980f9d3ed282e3dd23eddfa31dad9",
+      "output": "sanitized/long_line.txt",
+      "status": "sanitized"
+    },
+    {
+      "input_sha256": "4c0f4564fdf60889fe8b6447574e3d6451fea18cf5ea58024923615da007f85b",
+      "output": "sanitized/doc_362bdc2ef1.txt",
+      "status": "sanitized"
+    },
+    {
+      "input_sha256": "08ffee96caf3bcc0cc7b478f14ef68db146df638b1277cc5d8200e217f9d3d7b",
+      "output": "sanitized/trunc.csv",
+      "status": "sanitized"
+    },
+    {
+      "input_sha256": "73e723d084fae9a69a1a21002046ed5d3b95b1c3446db9b5e717dbd80c1062dd",
+      "output": "sanitized/trunc.csv",
+      "status": "sanitized",
+      "_alt": true
+    },
+    {
+      "input_sha256": "6dc565f79bae28a89efbf3d42819041ba3866678e70bb354b464ffc727a3a8f2",
+      "output": "sanitized/doc_1597a8de33.txt",
+      "status": "sanitized"
+    },
+    {
+      "input_sha256": "ffd43fec768f01c7dc1ab8afa8744e4b3ed87b443daf91e8a8740fce71cee65f",
+      "output": "sanitized/doc_e7d41520cd.txt",
+      "status": "sanitized"
+    },
+    {
+      "input_sha256": "4cf9d0cd59ceec9398df0c914174d620e2881cc3f2da47a31be6ca6cdcefc534",
+      "output": "sanitized/doc_e7d41520cd.txt",
+      "status": "sanitized",
+      "_alt": true
+    }
+  ],
+  "counts": {
+    "files_total": 15,
+    "files_sanitized": 12,
+    "files_quarantined": 3,
+    "records_processed": 13,
+    "identifiers_detected": 10,
+    "records_linked": 5,
+    "records_generalized": 2,
+    "records_suppressed": 0,
+    "records_quarantined": 0
+  },
+  "entities": {
+    "FILENAME_PII": 3,
+    "NAME": 2,
+    "PATIENT_NAME": 5
+  },
+  "timing": {
+    "seconds": 3.56
+  },
+  "resources": {
+    "peak_rss_mb": 29.0
+  }
+}

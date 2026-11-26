@@ -1,0 +1,72 @@
+[
+  {
+    "id": "API-01",
+    "status": "PASS",
+    "detail": "GET / status=200, nosniff=nosniff"
+  },
+  {
+    "id": "API-TRAV-1",
+    "status": "PASS",
+    "detail": "/api/reports/download?target=../config/policy.yaml -> 400"
+  },
+  {
+    "id": "API-TRAV-2",
+    "status": "PASS",
+    "detail": "/api/reports/download?target=..\\..\\raksha.toml -> 400"
+  },
+  {
+    "id": "API-TRAV-3",
+    "status": "PASS",
+    "detail": "/api/reports/download?target=sanitized/../report.json -> 403"
+  },
+  {
+    "id": "API-TRAV-4",
+    "status": "PASS",
+    "detail": "/styles.css/../rakshak/web_server.py -> 404"
+  },
+  {
+    "id": "API-02",
+    "status": "PASS",
+    "detail": "malformed JSON -> 400"
+  },
+  {
+    "id": "API-03",
+    "status": "PASS",
+    "detail": "unexpected content-type -> 400"
+  },
+  {
+    "id": "API-04",
+    "status": "PASS",
+    "detail": "empty upload -> 400"
+  },
+  {
+    "id": "API-05",
+    "status": "PASS",
+    "detail": "invalid base64 -> 400"
+  },
+  {
+    "id": "API-06",
+    "status": "PASS",
+    "detail": "traversal filename sanitized -> 200"
+  },
+  {
+    "id": "API-07",
+    "status": "PASS",
+    "detail": "RAKSHA_SECRET absent from /api/overview"
+  },
+  {
+    "id": "API-08",
+    "status": "PASS",
+    "detail": "custom run counts={'files_total': 2, 'files_sanitized': 1, 'files_quarantined': 1, 'records_processed': 1, 'identifiers_detected': 0, 'records_linked': 1, 'records_generalized': 0, 'records_suppressed': 0, 'records_quarantined': 0}"
+  },
+  {
+    "id": "API-09",
+    "status": "PASS",
+    "detail": "quarantined download blocked -> 403"
+  },
+  {
+    "id": "API-10",
+    "status": "PASS",
+    "detail": "cross-run switch restored practice-baseline"
+  }
+]

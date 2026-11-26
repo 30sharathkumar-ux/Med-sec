@@ -1,0 +1,112 @@
+{
+  "NAME_EN": {
+    "status": "PASS",
+    "hit_count": 0,
+    "surfaces": []
+  },
+  "INITIAL_NAME": {
+    "status": "PASS",
+    "hit_count": 0,
+    "surfaces": []
+  },
+  "HONORIFIC_NAME": {
+    "status": "PASS",
+    "hit_count": 0,
+    "surfaces": []
+  },
+  "NAME_HI": {
+    "status": "PASS",
+    "hit_count": 0,
+    "surfaces": []
+  },
+  "RELATIVE_NAME": {
+    "status": "PASS",
+    "hit_count": 0,
+    "surfaces": []
+  },
+  "PHONE_1": {
+    "status": "PASS",
+    "hit_count": 0,
+    "surfaces": []
+  },
+  "PHONE_2": {
+    "status": "PASS",
+    "hit_count": 0,
+    "surfaces": []
+  },
+  "PHONE_HI": {
+    "status": "PASS",
+    "hit_count": 0,
+    "surfaces": []
+  },
+  "EMAIL": {
+    "status": "PASS",
+    "hit_count": 0,
+    "surfaces": []
+  },
+  "ADDRESS_EN": {
+    "status": "PASS",
+    "hit_count": 0,
+    "surfaces": []
+  },
+  "ADDRESS_HI": {
+    "status": "PASS",
+    "hit_count": 0,
+    "surfaces": []
+  },
+  "PIN": {
+    "status": "PASS",
+    "hit_count": 0,
+    "surfaces": []
+  },
+  "AADHAAR": {
+    "status": "PASS",
+    "hit_count": 0,
+    "surfaces": []
+  },
+  "ABHA": {
+    "status": "PASS",
+    "hit_count": 0,
+    "surfaces": []
+  },
+  "MRN_1": {
+    "status": "PASS",
+    "hit_count": 0,
+    "surfaces": []
+  },
+  "MRN_2": {
+    "status": "PASS",
+    "hit_count": 0,
+    "surfaces": []
+  },
+  "PAN": {
+    "status": "PASS",
+    "hit_count": 0,
+    "surfaces": []
+  },
+  "INSURANCE": {
+    "status": "PASS",
+    "hit_count": 0,
+    "surfaces": []
+  },
+  "JSON_KEY_PII": {
+    "status": "PASS",
+    "hit_count": 0,
+    "surfaces": []
+  },
+  "CSV_HEADER_PII": {
+    "status": "PASS",
+    "hit_count": 0,
+    "surfaces": []
+  },
+  "FILENAME_PII": {
+    "status": "PASS",
+    "hit_count": 0,
+    "surfaces": []
+  },
+  "BASE64_PII": {
+    "status": "PASS",
+    "hit_count": 0,
+    "surfaces": []
+  }
+}

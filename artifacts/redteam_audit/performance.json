@@ -1,0 +1,7 @@
+{
+  "cpu_affinity_2_cores_enforced": true,
+  "synthetic_8_files_seconds": 0.095,
+  "synthetic_repeat_seconds": 0.046,
+  "robust_13_files_10mb_seconds": 3.572,
+  "process_rss_mb": 27.75
+}

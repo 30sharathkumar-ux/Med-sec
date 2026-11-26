@@ -1,0 +1,53 @@
+{
+  "resourceType": "Bundle",
+  "type": "collection",
+  "entry": [
+    {
+      "resource": {
+        "resourceType": "Organization",
+        "name": "Hospital Alpha"
+      }
+    },
+    {
+      "resource": {
+        "resourceType": "Patient",
+        "identifier": [
+          {
+            "system": "urn:raksha:uhid",
+            "value": "[MRN]"
+          }
+        ],
+        "name": [
+          {
+            "text": "[PATIENT_NAME]"
+          }
+        ],
+        "telecom": [
+          {
+            "system": "phone",
+            "value": "[PHONE]"
+          }
+        ],
+        "gender": "male",
+        "birthDate": "1979-01-18",
+        "address": [
+          {
+            "city": "[DISTRICT]",
+            "postalCode": "261***"
+          }
+        ]
+      }
+    },
+    {
+      "resource": {
+        "resourceType": "Condition",
+        "code": {
+          "text": "Takayasu arteritis"
+        }
+      }
+    }
+  ],
+  "meta": {
+    "patient_ref": "PSN-N1J5KZ"
+  }
+}

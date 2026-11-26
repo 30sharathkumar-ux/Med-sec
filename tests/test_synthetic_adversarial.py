@@ -143,6 +143,40 @@ class SyntheticAdversarialTests(unittest.TestCase):
         self.assertIn("Wegener granulomatosis", all_sanitized)
         self.assertIn("29 days", all_sanitized)
 
+    def test_camelcase_json_key_and_csv_header_pii_sanitized(self) -> None:
+        files = {
+            "reg.csv": (
+                "patient_name,uhid,HdrZorawarTag_col\n"
+                "Zorawar Qureshi,HOSP-9901,safe_value\n"
+            ),
+            "nested.json": json.dumps({
+                "patient": {"name": "Zorawar Qureshi", "uhid": "HOSP-9901"},
+                "KeyZorawarTag_meta": "Zorawar Qureshi",
+                "clinical": {"diagnosis": "Takayasu arteritis"},
+            }),
+        }
+        out, _, _ = self._run(files, "synth-secret-keyhdr")
+        all_sanitized = "\n".join(
+            p.read_text(encoding="utf-8") for p in (out / "sanitized").rglob("*") if p.is_file()
+        )
+        self.assertNotIn("Zorawar", all_sanitized)
+        self.assertNotIn("KeyZorawarTag", all_sanitized)
+        self.assertNotIn("HdrZorawarTag", all_sanitized)
+        self.assertIn("Takayasu arteritis", all_sanitized)
+
+    def test_long_single_line_linear_performance(self) -> None:
+        import time
+        from rakshak.detection.addresses import detect_address_spans
+        from rakshak.detection.identifiers import detect_identifier_spans
+
+        for size in (5_000, 20_000, 100_000):
+            txt = "Diagnosis: Fever. " + ("X" * size)
+            t0 = time.perf_counter()
+            detect_identifier_spans(txt)
+            detect_address_spans(txt)
+            elapsed = time.perf_counter() - t0
+            self.assertLess(elapsed, 2.0, f"Single-line {size} chars took {elapsed:.2f}s (possible ReDoS)")
+
 
 if __name__ == "__main__":
     unittest.main()

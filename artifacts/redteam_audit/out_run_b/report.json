@@ -1,0 +1,127 @@
+{
+  "schema": "raksha-report/1",
+  "files": [
+    {
+      "input_sha256": "c56fc49579237dda3fdc35d0baa6b4c1930ae0353cd7462fa11d206640ecbebf",
+      "output": null,
+      "status": "quarantined",
+      "reason": "unsupported_format"
+    },
+    {
+      "input_sha256": "2ddce4621c6ae8ae3a6ba5af183b08afb3c57f6583c41a7e190dd2cf98922c8c",
+      "output": "sanitized/doc_23d8937e02.txt",
+      "status": "sanitized"
+    },
+    {
+      "input_sha256": "2ac887a1b963800d9cab63f1950f974162d86b9f47e90538a4698cc3c201aa25",
+      "output": "sanitized/doc_23d8937e02.txt",
+      "status": "sanitized",
+      "_alt": true
+    },
+    {
+      "input_sha256": "4b8f749203ea0aaf08645ecfaeca66ca10b439c507d037b27dd3697fe1f0aa71",
+      "output": "sanitized/doc_cc08b6ebe8.txt",
+      "status": "sanitized"
+    },
+    {
+      "input_sha256": "8ddc1b3c16b2efd238f13ad1901f9da55b0134ec67711d255580718971c7f5a4",
+      "output": "sanitized/doc_cc08b6ebe8.txt",
+      "status": "sanitized",
+      "_alt": true
+    },
+    {
+      "input_sha256": "e7a7289aa408cd1a9a28e46696d96dca2bdef1525ddabda1fd78e6326a09e4d1",
+      "output": "sanitized/fhir_bundle.json",
+      "status": "sanitized"
+    },
+    {
+      "input_sha256": "f8796c96fbb9c54e159429eeceb08a0f33401810c09286deb29ea01c0eedfcac",
+      "output": "sanitized/fhir_bundle.json",
+      "status": "sanitized",
+      "_alt": true
+    },
+    {
+      "input_sha256": "371edb40139e2ede8bd9b7739c8e77596da7fbc86988c0a388a05eeb07d68bda",
+      "output": "sanitized/hindi_opd_note.txt",
+      "status": "sanitized"
+    },
+    {
+      "input_sha256": "f2b59cc243b88e8b435f34f4e9ec5901ae11e184160b5a29cf66a32932d3381c",
+      "output": "sanitized/hindi_opd_note.txt",
+      "status": "sanitized",
+      "_alt": true
+    },
+    {
+      "input_sha256": "42363b58a18b659c75e26864ea832994a1dcebc228c1ce7be8a4e10e75b1d61b",
+      "output": "sanitized/hosp_alpha_reg.csv",
+      "status": "sanitized"
+    },
+    {
+      "input_sha256": "ce4fb2bda5eed1c16fcf4d1782faf752d64876b26a394e44a4ecab5fae51321f",
+      "output": "sanitized/hosp_alpha_reg.csv",
+      "status": "sanitized",
+      "_alt": true
+    },
+    {
+      "input_sha256": "6421ed4a888f7eef6456e70007460ce1205b19a2fa1ecb3414b6a2670929b7b8",
+      "output": "sanitized/hosp_beta_lab.tsv",
+      "status": "sanitized"
+    },
+    {
+      "input_sha256": "455d524ebd87527abbbf36a0a10ef8fc530dec001348be0ef319cc1eeb0a536e",
+      "output": "sanitized/hosp_beta_lab.tsv",
+      "status": "sanitized",
+      "_alt": true
+    },
+    {
+      "input_sha256": "c926fd8d18a054ca8f1373253830efa501cc5112437b83f0e84cc4162af411b3",
+      "output": "sanitized/nested_record.json",
+      "status": "sanitized"
+    },
+    {
+      "input_sha256": "fcb875294d9c33e607eee4a016b3ba3529cca17eba73d19df570c6fa6f684283",
+      "output": "sanitized/nested_record.json",
+      "status": "sanitized",
+      "_alt": true
+    }
+  ],
+  "counts": {
+    "files_total": 8,
+    "files_sanitized": 7,
+    "files_quarantined": 1,
+    "records_processed": 11,
+    "identifiers_detected": 102,
+    "records_linked": 11,
+    "records_generalized": 8,
+    "records_suppressed": 0,
+    "records_quarantined": 0
+  },
+  "entities": {
+    "261***": 2,
+    "AADHAAR": 4,
+    "ABHA": 1,
+    "ABHA_NUMBER": 1,
+    "DATE": 8,
+    "DOB": 2,
+    "EMAIL": 2,
+    "FILENAME_PII": 2,
+    "INSURANCE": 1,
+    "INSURANCE_ID": 1,
+    "LOCALITY": 1,
+    "MRN": 16,
+    "NAME": 6,
+    "PAN": 2,
+    "PATIENT_NAME": 14,
+    "PHONE": 17,
+    "PIN": 5,
+    "RELATIVE": 4,
+    "RELATIVE_NAME": 5,
+    "VILLAGE": 8
+  },
+  "timing": {
+    "seconds": 0.03
+  },
+  "resources": {
+    "peak_rss_mb": 25.9
+  }
+}

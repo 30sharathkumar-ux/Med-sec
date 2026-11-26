@@ -1,0 +1,22 @@
+{
+  "schema": "raksha-report/1",
+  "files": [],
+  "counts": {
+    "files_total": 0,
+    "files_sanitized": 0,
+    "files_quarantined": 0,
+    "records_processed": 0,
+    "identifiers_detected": 0,
+    "records_linked": 0,
+    "records_generalized": 0,
+    "records_suppressed": 0,
+    "records_quarantined": 0
+  },
+  "entities": {},
+  "timing": {
+    "seconds": 0.0
+  },
+  "resources": {
+    "peak_rss_mb": 29.0
+  }
+}

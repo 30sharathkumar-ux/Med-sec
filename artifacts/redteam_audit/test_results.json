@@ -1,0 +1,285 @@
+{
+  "tests": [
+    {
+      "id": "PIPE-01",
+      "category": "Output",
+      "status": "PASS",
+      "detail": "exit codes 0, 0, 0"
+    },
+    {
+      "id": "SEC-01",
+      "category": "Encryption",
+      "status": "PASS",
+      "detail": "same secret deterministic=True"
+    },
+    {
+      "id": "SEC-02",
+      "category": "Encryption",
+      "status": "PASS",
+      "detail": "different secret changes output=True"
+    },
+    {
+      "id": "SEC-03",
+      "category": "Encryption",
+      "status": "PASS",
+      "detail": "RAKSHA_SECRET absent from all outputs"
+    },
+    {
+      "id": "CANARY-NAME_EN",
+      "category": "PII Detection",
+      "status": "PASS",
+      "detail": "hits=0 []"
+    },
+    {
+      "id": "CANARY-INITIAL_NAME",
+      "category": "PII Detection",
+      "status": "PASS",
+      "detail": "hits=0 []"
+    },
+    {
+      "id": "CANARY-HONORIFIC_NAME",
+      "category": "PII Detection",
+      "status": "PASS",
+      "detail": "hits=0 []"
+    },
+    {
+      "id": "CANARY-NAME_HI",
+      "category": "PII Detection",
+      "status": "PASS",
+      "detail": "hits=0 []"
+    },
+    {
+      "id": "CANARY-RELATIVE_NAME",
+      "category": "PII Detection",
+      "status": "PASS",
+      "detail": "hits=0 []"
+    },
+    {
+      "id": "CANARY-PHONE_1",
+      "category": "PII Detection",
+      "status": "PASS",
+      "detail": "hits=0 []"
+    },
+    {
+      "id": "CANARY-PHONE_2",
+      "category": "PII Detection",
+      "status": "PASS",
+      "detail": "hits=0 []"
+    },
+    {
+      "id": "CANARY-PHONE_HI",
+      "category": "PII Detection",
+      "status": "PASS",
+      "detail": "hits=0 []"
+    },
+    {
+      "id": "CANARY-EMAIL",
+      "category": "PII Detection",
+      "status": "PASS",
+      "detail": "hits=0 []"
+    },
+    {
+      "id": "CANARY-ADDRESS_EN",
+      "category": "PII Detection",
+      "status": "PASS",
+      "detail": "hits=0 []"
+    },
+    {
+      "id": "CANARY-ADDRESS_HI",
+      "category": "PII Detection",
+      "status": "PASS",
+      "detail": "hits=0 []"
+    },
+    {
+      "id": "CANARY-PIN",
+      "category": "PII Detection",
+      "status": "PASS",
+      "detail": "hits=0 []"
+    },
+    {
+      "id": "CANARY-AADHAAR",
+      "category": "PII Detection",
+      "status": "PASS",
+      "detail": "hits=0 []"
+    },
+    {
+      "id": "CANARY-ABHA",
+      "category": "PII Detection",
+      "status": "PASS",
+      "detail": "hits=0 []"
+    },
+    {
+      "id": "CANARY-MRN_1",
+      "category": "PII Detection",
+      "status": "PASS",
+      "detail": "hits=0 []"
+    },
+    {
+      "id": "CANARY-MRN_2",
+      "category": "PII Detection",
+      "status": "PASS",
+      "detail": "hits=0 []"
+    },
+    {
+      "id": "CANARY-PAN",
+      "category": "PII Detection",
+      "status": "PASS",
+      "detail": "hits=0 []"
+    },
+    {
+      "id": "CANARY-INSURANCE",
+      "category": "PII Detection",
+      "status": "PASS",
+      "detail": "hits=0 []"
+    },
+    {
+      "id": "CANARY-JSON_KEY_PII",
+      "category": "PII Detection",
+      "status": "PASS",
+      "detail": "hits=0 []"
+    },
+    {
+      "id": "CANARY-CSV_HEADER_PII",
+      "category": "PII Detection",
+      "status": "PASS",
+      "detail": "hits=0 []"
+    },
+    {
+      "id": "CANARY-FILENAME_PII",
+      "category": "PII Detection",
+      "status": "PASS",
+      "detail": "hits=0 []"
+    },
+    {
+      "id": "CANARY-BASE64_PII",
+      "category": "PII Detection",
+      "status": "PASS",
+      "detail": "hits=0 []"
+    },
+    {
+      "id": "CLIN-01",
+      "category": "Clinical Preservation",
+      "status": "PASS",
+      "detail": "C/O fever preserved"
+    },
+    {
+      "id": "CLIN-02",
+      "category": "Clinical Preservation",
+      "status": "PASS",
+      "detail": "Dr. Ramesh preserved"
+    },
+    {
+      "id": "CLIN-03",
+      "category": "Clinical Preservation",
+      "status": "PASS",
+      "detail": "Parkinson's disease preserved"
+    },
+    {
+      "id": "CLIN-04",
+      "category": "Clinical Preservation",
+      "status": "PASS",
+      "detail": "Ramipril 5 mg preserved"
+    },
+    {
+      "id": "CLIN-05",
+      "category": "Clinical Preservation",
+      "status": "PASS",
+      "detail": "Dolo 650 BD x 5 days preserved"
+    },
+    {
+      "id": "CLIN-06",
+      "category": "Clinical Preservation",
+      "status": "PASS",
+      "detail": "1-0-1 schedule not mistaken for phone"
+    },
+    {
+      "id": "CLIN-07",
+      "category": "Clinical Preservation",
+      "status": "PASS",
+      "detail": "BP 132/84 mmHg preserved"
+    },
+    {
+      "id": "CLIN-08",
+      "category": "Clinical Preservation",
+      "status": "PASS",
+      "detail": "HbA1c 7.4 % preserved"
+    },
+    {
+      "id": "CLIN-09",
+      "category": "Clinical Preservation",
+      "status": "PASS",
+      "detail": "Creatinine 1.1 mg/dL preserved"
+    },
+    {
+      "id": "CLIN-10",
+      "category": "Clinical Preservation",
+      "status": "PASS",
+      "detail": "Laparoscopic cholecystectomy preserved"
+    },
+    {
+      "id": "CLIN-11",
+      "category": "Clinical Preservation",
+      "status": "PASS",
+      "detail": "Takayasu arteritis preserved"
+    },
+    {
+      "id": "CLIN-12",
+      "category": "Clinical Preservation",
+      "status": "PASS",
+      "detail": "age bands contain 47 and 62"
+    },
+    {
+      "id": "CLIN-13",
+      "category": "Clinical Preservation",
+      "status": "PASS",
+      "detail": "7-day length of stay preserved after date shifting"
+    },
+    {
+      "id": "PRIV-01",
+      "category": "Privacy Attack",
+      "status": "PASS",
+      "detail": "4-row synthetic CSV min k-anonymity=1, equivalence_classes=4"
+    },
+    {
+      "id": "LINK-01",
+      "category": "Identity Linkage",
+      "status": "PASS",
+      "detail": "P1 cross-hospital/format pseudonyms={'PSN-5QM5RR'}"
+    },
+    {
+      "id": "LINK-02",
+      "category": "Identity Linkage",
+      "status": "PASS",
+      "detail": "homonyms separated: PSN-VD8E3Q != PSN-G3FEGV"
+    },
+    {
+      "id": "LINK-03",
+      "category": "Identity Linkage",
+      "status": "PASS",
+      "detail": "ambiguous Asha patient=None"
+    },
+    {
+      "id": "ROBUST-01",
+      "category": "Robustness",
+      "status": "PASS",
+      "detail": "robustness run rc=0, validate rc=0, time=3.572s"
+    },
+    {
+      "id": "ROBUST-02",
+      "category": "Robustness",
+      "status": "PASS",
+      "detail": "empty dir rc=0"
+    },
+    {
+      "id": "CONTRACT-01",
+      "category": "Output Contract",
+      "status": "PASS",
+      "detail": "validate_output synthetic rc=0"
+    }
+  ],
+  "summary": {
+    "total": 46,
+    "passed": 46,
+    "failed": 0
+  }
+}

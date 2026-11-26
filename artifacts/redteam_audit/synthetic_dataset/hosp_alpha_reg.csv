@@ -1,0 +1,5 @@
+patient_name,relative_name,phone,email,aadhaar,abha_no,uhid,pan,insurance_id,age,gender,village,pin,admission_date,discharge_date,diagnosis,medication,HdrZorawarTag_col
+Mr. Zorawar Qureshi,S/o Devendra Nath,+91-9811223344,zorawar.rt.audit@example.invalid,4918 2736 4512,91-4821-7734-9901,ALPH-UHID-88412,ABCDE1234F,POL-SYN-774190,47,M,Biswan,261203,2026-02-01,2026-02-08,Takayasu arteritis,Ramipril 5 mg,safe_val_1
+R. K. Menon,C/o Meenakshi Menon,9822334455,,491827369999,,ALPH-UHID-88499,,,62,M,Sitapur,261001,2026-02-10,2026-02-14,Parkinson's disease,Dolo 650 BD x 5 days,safe_val_2
+Sunita Verma,W/o Harish Verma,9833001122,,,,ALPH-UHID-70001,,,56,F,Kheri,262701,2026-03-01,2026-03-03,Type 2 Diabetes Mellitus,Metformin 500 mg,safe_val_3
+Sunita Verma,D/o Mahesh Verma,9844001122,,,,ALPH-UHID-70002,,,31,F,Lakhimpur,262702,2026-03-05,2026-03-06,Acute gastritis,Pantoprazole 40 mg,safe_val_4

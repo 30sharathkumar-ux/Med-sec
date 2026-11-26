@@ -1,0 +1,19 @@
+{
+  "hospital": "Hospital Alpha",
+  "KeyZorawarTag_meta": "Zorawar Qureshi",
+  "patient": {
+    "name": "Zorawar Qureshi",
+    "phone": "9811223344",
+    "uhid": "ALPH-UHID-88412",
+    "age": 47,
+    "dob": "1979-05-15"
+  },
+  "clinical": {
+    "diagnosis": "Takayasu arteritis",
+    "vitals": "BP 132/84 mmHg"
+  },
+  "attachment": {
+    "content_type": "text/plain",
+    "data_base64": "QXR0YWNobWVudCBQYXRpZW50OiBCNjRDYW5hcnlQYXRpZW50OTg5OSBQaG9uZTogOTgxMTIyMzM0NCBVSElEOiBBTFBILVVISUQtODg0MTI="
+  }
+}
