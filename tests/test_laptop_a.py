@@ -555,6 +555,61 @@ class TestEvidenceExtraction(unittest.TestCase):
         self.assertEqual(ev.gender, "M")
         self.assertTrue(len(ev.mrns) > 0)
 
+    def test_devanagari_mrn_and_relative_extraction(self) -> None:
+        text = (
+            "मरीज़ का नाम: रीना निषाद\n"
+            "पिता का नाम: अजय निषाद\n"
+            "पंजीकरण सं.: JJH-0076928\n"
+            "मोबाइल: ७५६००१००३४"
+        )
+        ev = extract_evidence_text(text, "note.txt", "jeevanjyoti")
+        self.assertEqual(ev.patient_name_normalized, "riinaa nishaada")
+        self.assertEqual(ev.relative_name_normalized, "ajaya nishaada")
+        self.assertIn("JJH-0076928", ev.mrns)
+        self.assertIn("7560010034", ev.phones)
+
+
+class TestFalseMergeRegression(unittest.TestCase):
+    """Regression tests for preventing false merges on common names."""
+
+    def test_conflicting_dob_prevents_merge(self) -> None:
+        """Same name with conflicting DOBs must never merge."""
+        resolver = IdentityResolver()
+        ev1 = RecordEvidence(
+            record_id="r1", file_path="f1", loc="row:1",
+            patient_name="Harish Pandey", patient_name_normalized="harish pandey",
+            dob="1965-11-25", age=59, hospital="jeevanjyoti",
+        )
+        ev2 = RecordEvidence(
+            record_id="r2", file_path="f2", loc="row:2",
+            patient_name="Harish Pandey", patient_name_normalized="harish pandey",
+            dob="2005-01-10", age=21, hospital="jeevanjyoti",
+        )
+        resolver.add_record(ev1)
+        resolver.add_record(ev2)
+        clusters = resolver.resolve()
+        self.assertNotEqual(clusters["r1"], clusters["r2"])
+
+    def test_conflicting_relatives_prevents_merge(self) -> None:
+        """Same name with conflicting relative names must never merge."""
+        resolver = IdentityResolver()
+        ev1 = RecordEvidence(
+            record_id="r1", file_path="f1", loc="row:1",
+            patient_name="Brijesh Yadav", patient_name_normalized="brijesh yadav",
+            relative_name="Raju Gupta", relative_name_normalized="raju gupta",
+            hospital="jeevanjyoti",
+        )
+        ev2 = RecordEvidence(
+            record_id="r2", file_path="f2", loc="row:2",
+            patient_name="Brijesh Yadav", patient_name_normalized="brijesh yadav",
+            relative_name="Manoj Tiwari", relative_name_normalized="manoj tiwari",
+            hospital="jeevanjyoti",
+        )
+        resolver.add_record(ev1)
+        resolver.add_record(ev2)
+        clusters = resolver.resolve()
+        self.assertNotEqual(clusters["r1"], clusters["r2"])
+
 
 if __name__ == "__main__":
     unittest.main()

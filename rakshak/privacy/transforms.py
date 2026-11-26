@@ -150,27 +150,32 @@ def generalize_address(address: str) -> str:
     """Suppress house numbers and specific locality details from addresses.
 
     Preserves tehsil and district, removes house numbers, ward numbers,
-    mohalla names, and landmarks.
+    mohalla names, and landmarks (English and Devanagari).
     """
     result = address
-    # Remove house numbers: H.No. XXX, House XXX, Makan No. XXX
+    # Remove house numbers: H.No. XXX, House XXX, Makan No. XXX, मकान नं. XXX
     result = re.sub(
-        r'(?:H\.?\s*No\.?|House|Makan\s+No\.?|मकान\s+नं\.?)\s*\d+\s*,?\s*',
+        r'(?:H\.?\s*No\.?|House|Makan\s+No\.?|मकान\s+नं\.?|मकान\s+नंबर)\s*[:\-]?\s*\d+[A-Za-z0-9\-\/]*\s*,?\s*',
         '', result, flags=re.IGNORECASE
     )
-    # Remove ward numbers: Ward XX
+    # Remove ward numbers: Ward XX, वार्ड XX
     result = re.sub(
-        r'Ward\s+\d+\s*,?\s*',
+        r'(?:Ward|वार्ड)\s+\d+\s*,?\s*',
         '', result, flags=re.IGNORECASE
     )
-    # Remove mohalla/locality names
+    # Remove mohalla/locality names in English and Devanagari
     result = re.sub(
-        r'Mohalla\s+[^,]+,?\s*',
+        r'(?:Mohalla|Colony|Society|Basti|मोहल्ला|बस्ती|कॉलोनी)\s+[^,]+,?\s*',
         '', result, flags=re.IGNORECASE
     )
-    # Remove landmarks: near XXX, opp. XXX
+    # Remove English landmarks (prepositional: near XXX, behind XXX, opp. XXX)
     result = re.sub(
-        r'(?:near|opp\.?|opposite|के\s*पास|सामने)\s+[^,]+,?\s*',
+        r'(?:near|behind|opp\.?|opposite|in front of|adjacent to|next to)\s+[^,]+,?\s*',
+        '', result, flags=re.IGNORECASE
+    )
+    # Remove Hindi landmarks (postpositional: [Landmark] के पास / के पीछे / के सामने / के बगल)
+    result = re.sub(
+        r'[^,]+?\s*(?:के\s*पास|के\s*पीछे|के\s*सामने|के\s*बगल(?:\s*में)?|के\s*नज़दीक|के\s*नजदीक|के\s*आसपास)\s*,?\s*',
         '', result, flags=re.IGNORECASE
     )
     # Remove C/O relative references
@@ -179,7 +184,7 @@ def generalize_address(address: str) -> str:
         '', result, flags=re.IGNORECASE
     )
     # Clean up remaining commas and whitespace
-    result = re.sub(r',\s*,', ',', result)
+    result = re.sub(r',\s*,+', ',', result)
     result = re.sub(r'\s+', ' ', result).strip(' ,')
     return result
 
