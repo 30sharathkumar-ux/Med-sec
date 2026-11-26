@@ -45,10 +45,11 @@ PROTECTED_PATTERNS: list[tuple[str, re.Pattern[str]]] = [
         ),
     ),
     # Hospital wards & bed numbers (distinct from residential Ward N in addresses)
+    # Only protect "Ward N" when followed by clinical context: (Dept), /Bed, parenthetical department
     (
         "HOSPITAL_WARD",
         re.compile(
-            r"(?i)(?:\bWard(?:/Bed)?\s*[:#-]?\s*\d+(?:\s*\([^)\n]+\))?(?:\s*/\s*Bed\s*\d+)?|\bBed\s*(?:No\.?)?\s*\d+\b)"
+            r"(?i)(?:\bWard(?:/Bed)?\s*[:#-]?\s*\d+\s*\([^)\n]+\)(?:\s*/\s*Bed\s*\d+)?|\bWard(?:/Bed)?\s*[:#-]?\s*\d+\s*/\s*Bed\s*\d+|\bBed\s*(?:No\.?)?\s*\d+\b)"
         ),
     ),
     # ASHA community health worker

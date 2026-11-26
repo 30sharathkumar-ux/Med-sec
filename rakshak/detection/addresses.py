@@ -42,6 +42,13 @@ _VILLAGE_RE = re.compile(
     r")"
 )
 
+# Unlabeled village: multi-word place name right before Tehsil/Block/Distt label (after comma or mohalla)
+_VILLAGE_BEFORE_TEHSIL_RE = re.compile(
+    r"(?i)(?:,\s*|(?:Nagar|Colony|Basti|Bazar|Bazaar)\s+[A-Z][a-z]+\s*,\s*)"
+    r"([A-Z][a-z]+(?:\s+(?:Kalan|Khurd|Buzurg|Khas|Jadid|Qadeem))?)"
+    r"\s*,\s*(?:Tehsil|Teh\.?|Block|Taluka|Distt\.?|District|Dist\.?)"
+)
+
 # Tehsil / Block / Taluka
 _TEHSIL_RE = re.compile(
     r"(?i)(?:"
@@ -95,6 +102,10 @@ def detect_address_spans(
         val_grp = 1 if m.group(1) is not None else 2
         if m.group(val_grp):
             _add(m.start(val_grp), m.end(val_grp), "VILLAGE")
+
+    # Unlabeled village names appearing before Tehsil/District labels
+    for m in _VILLAGE_BEFORE_TEHSIL_RE.finditer(text):
+        _add(m.start(1), m.end(1), "VILLAGE")
 
     for m in _LOCALITY_RE.finditer(text):
         # Extra guard: do not touch "Ward N" if immediately followed by "(Dept)" or "/ Bed"
