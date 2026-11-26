@@ -9,8 +9,8 @@
 
 | Metric | Measured | Limit | Margin |
 |---|---|---|---|
-| **Wall-clock time** | 2.47 seconds | 900 seconds (15 min) | 364× under limit |
-| **Peak RSS** | 31.6 MB | 4,096 MB (4 GB) | 130× under limit |
+| **Wall-clock time** | 2.56 seconds | 900 seconds (15 min) | 351× under limit |
+| **Peak RSS** | 31.9 MB | 4,096 MB (4 GB) | 128× under limit |
 | **CPU cores used** | 1 (single-threaded) | 2 | Within budget |
 | **Exit code** | 0 | 0 | ✅ |
 
@@ -29,7 +29,7 @@ Based on `scoring.toml` performance profile (`standard`):
 - **Score: 1.0 (maximum)**
 
 ### 2.3 Determinism Score
-- Two runs with same secret: **byte-identical** sanitized/ and records.jsonl
+- Two runs with same secret: **byte-identical** `sanitized/` and `records.jsonl`
 - **Score: 1.0 (maximum)**
 
 ### 2.4 Reliability Score

@@ -110,7 +110,7 @@ diff -rq output_1/sanitized output_3/sanitized
 
 ```bash
 python3 -m pytest tests/ -v --tb=short
-# Expected: 125 passed, 0 failed
+# Expected: 147 passed, 0 failed
 ```
 
 ## 8. Input Immutability Verification

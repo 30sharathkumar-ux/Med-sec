@@ -14,8 +14,8 @@
 | 3 | `README.md` | ✅ | 1616 words, comprehensive |
 | 4 | `config/policy.yaml` | ✅ | Privacy parameters defined |
 | 5 | `main.py` | ✅ | Entry point, calls `run_pipeline()` |
-| 6 | `tests/` | ✅ | 125 tests, all passing |
-| 7 | Project Brief PDF | ⚠️ | Markdown template created; convert to PDF before submission |
+| 6 | `tests/` | ✅ | 147 tests, all passing |
+| 7 | Project Brief PDF | ✅ | `brief/PROJECT_BRIEF.pdf` — 2 pages |
 
 ## 2. Official Checker Results
 
@@ -103,8 +103,8 @@ Raw copies:          0
 
 ## 7. Pre-Submission Actions
 
-- [ ] Convert `brief/PROJECT_BRIEF.md` to PDF
-- [ ] Place PDF in repository root or `brief/` directory
+- [x] Convert `brief/PROJECT_BRIEF.md` to PDF → `brief/PROJECT_BRIEF.pdf`
+- [x] Place PDF in repository
 - [ ] Push to GitHub
 - [ ] Submit GitHub repo link + PDF before deadline
 

@@ -145,7 +145,7 @@
 | 8.3 | `README.md` | `README.md` — 1616 words | ✅ PASS |
 | 8.4 | `config/policy.yaml` | `config/policy.yaml` — privacy parameters | ✅ PASS |
 | 8.5 | `main.py` | `main.py` — entry point | ✅ PASS |
-| 8.6 | Test suite | `tests/` — 125 tests, all passing | ✅ PASS |
+| 8.6 | Test suite | `tests/` — 147 tests, all passing | ✅ PASS |
 | 8.7 | Project Brief PDF | `brief/PROJECT_BRIEF.md` → needs PDF conversion | ⚠️ MD created, PDF conversion needed |
 
 ## 9. Performance & Reliability (§2.9)

@@ -9,12 +9,12 @@
 
 | Metric | Value |
 |---|---|
-| **Total tests** | 125 |
-| **Passed** | 125 |
+| **Total tests** | 147 |
+| **Passed** | 147 |
 | **Failed** | 0 |
 | **Skipped** | 0 |
 | **Errors** | 0 |
-| **Runtime** | 0.82 seconds |
+| **Runtime** | 0.97 seconds |
 | **Framework** | pytest |
 | **Python version** | 3.11.15 |
 
@@ -171,10 +171,30 @@ READY TO SUBMIT
 | Run 1 vs Run 2 (same secret) — report.json (excl. timing) | ✅ Identical |
 | Run 1 vs Run 3 (different secret) | ✅ Different output |
 
+### 2.8 `tests/test_generalization.py` — Re-identification Resistance Tests
+Tests for adversarial quasi-identifier combination attacks and privacy-utility trade-offs.
+
+Key test areas:
+- Quasi-identifier combination attacks (age band + district uniqueness)
+- Rare diagnosis identification and suppression
+- Extreme age + rare diagnosis suppression triggers
+- PIN code generalization (6-digit to 3-digit prefix)
+- Village-to-district generalization
+- Per-patient deterministic date shifting
+- Stay duration exact preservation (100 random stays)
+- Global shift recovery attack blocking (variance check)
+- Secret rotation changes all shifts
+- Age band truthfulness for all ages 0-120
+- Band width correctness (exactly 5 ages per band)
+- k-anonymity measurement (high-k and singleton scenarios)
+- End-to-end CSV generalization (age banded, PIN generalized, village suppressed)
+- End-to-end JSON generalization (name removed, diagnosis preserved)
+- End-to-end text date shifting (admission/discharge)
+
 ## 4. Full pytest Output (Summary)
 
 ```
-============================= 125 passed in 0.82s =============================
+============================= 147 passed in 0.97s =============================
 ```
 
-All 125 tests pass consistently. No flaky tests observed across multiple runs.
+All 147 tests pass consistently. No flaky tests observed across multiple runs.
