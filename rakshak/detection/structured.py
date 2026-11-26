@@ -90,7 +90,10 @@ def classify_field(key: str, parent_key: str = "") -> str | None:
         return "CLINICAL_KEEP"
 
     # Base64 attachment payloads
-    if nk == "data" and np in ("attachment", "content", ""):
+    if nk in ("data", "payload", "encoded data", "base64 content", "attachment data",
+              "base64", "content data", "data base64") and (
+        nk != "data" or np in ("attachment", "content", "")
+    ):
         return "BASE64_DATA"
 
     # Metadata / file paths
