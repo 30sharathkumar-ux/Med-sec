@@ -277,6 +277,10 @@ def _clean_text_full(
     if not text or not text.strip():
         return text
 
+    # Strip zero-width obfuscation characters before span detection so indices stay aligned
+    if any(ch in text for ch in ("\u200b", "\u200c", "\u200d", "\u200e", "\u200f", "\ufeff")):
+        text = re.sub(r"[\u200b-\u200f\u202a-\u202e\ufeff]", "", text)
+
     # 0. Decode & sanitize any embedded Base64 payloads before span scanning
     text = sanitize_embedded_base64(
         text,

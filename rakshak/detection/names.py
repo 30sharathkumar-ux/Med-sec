@@ -55,7 +55,7 @@ LATIN_NAME_TOKENS = frozenset({
     "shabana", "shabnam", "shahid", "shahnaz", "shakeel", "shakti", "shalini", "shambhu",
     "shankar", "shanti", "shanthi", "sharma", "shashi", "sheetal", "shekhar", "shilpa",
     "shiv", "shivam", "shobha", "shukla", "shyam", "shyaam", "siddharth", "siddiqui",
-    "simran", "singh", "sita", "sohan", "sonali", "sonia", "sonu", "srivastava",
+    "simran", "singh", "sita", "seeta", "sohan", "sonali", "sonia", "sonu", "srivastava",
     "subhash", "sudha", "sudhir", "suhail", "sujata", "sukhwinder", "suman", "sumit",
     "sunil", "sunita", "suraj", "surendra", "suresh", "surya", "sushil", "sushma",
     "swati", "tabassum", "tanveer", "tara", "tariq", "tarun", "tej", "thakur",
@@ -80,7 +80,7 @@ DEVA_NAME_TOKENS = frozenset({
     "राकेश", "राज", "राजन", "राजू", "राजपूत", "राजेश", "राधिका", "राम", "राहुल", "रीना",
     "रुखसाना", "रेखा", "लक्ष्मी", "लाल", "लोधी", "वंदना", "वर्मा", "विजय", "विकास", "विवेक",
     "शबाना", "शर्मा", "शांति", "शाहिद", "श्याम", "श्रीवास्तव", "सलमा", "सलीम", "संजय",
-    "संदीप", "सरिता", "सिद्दीकी", "सिंह", "सुखविंदर", "सुनीता", "सुनील", "सुमन", "सुरेश",
+    "संदीप", "सरिता", "सिद्दीकी", "सिंह", "सीता", "सुखविंदर", "सुनीता", "सुनील", "सुमन", "सुरेश",
     "हरीश", "हरप्रीत", "यूसुफ",
     "जसप्रीत", "पार्वती",
 })
@@ -116,6 +116,10 @@ NON_NAME_STOPWORDS = frozenset({
     # Hinglish kinship terms (not surnames)
     "papa", "mama", "chacha", "chachu", "masi", "mausi", "mami", "nana", "nani",
     "dada", "dadi", "bua", "phuphi", "fufa", "tau", "taiji", "bhabhi", "amma",
+    "saas", "sasur", "devar", "jeth", "nanad", "jijaji",
+    # Common Hindi/Hinglish grammar particles (never personal names)
+    "aur", "hai", "tha", "thi", "hain", "ne", "ki", "ka", "ko", "se", "aaj", "kal",
+    "और", "है", "था", "थी", "हैं", "को", "ने", "से", "का", "की", "के",
 })
 
 # Context patterns capturing names even when completely unseen (canaries, chaos round)
@@ -124,15 +128,15 @@ _LABELED_NAME_PATTERNS: list[tuple[str, re.Pattern[str]]] = [
     (
         "PATIENT_NAME",
         re.compile(
-            r"(?i)(?:Patient(?:'s)?\s*Name|Pt\.?\s*Name|Name\s+of\s+Beneficiary|Name)"
-            r"\s*[:\-]\s*([^\n,|;]+?)(?=\s{2,}|\s+(?:Age|Sex|Reg|UHID|DOB|Mob|Mobile|Phone|Ward|IPD)\b|[\n,|;]|$)"
+            r"(?i)(?:Patient(?:'s)?\s*Name|Pt\.?\s*Name|Name\s+of\s+Beneficiary|Patient|Name)"
+            r"\s*(?::[-=]?|[-=])+\s*([^\n,|;]+?)(?=\s{2,}|\s+(?:Age|Sex|Reg|UHID|DOB|Mob|Mobile|Phone|Ward|IPD)\b|[\n,|;]|$)"
         ),
     ),
     (
         "PATIENT_NAME",
         re.compile(
             r"(?:मरीज़\s*का\s*नाम|मरीज\s*का\s*नाम|नाम)"
-            r"\s*[:\-]\s*([^\n,|;।]+?)(?=\s{2,}|\s+(?:आयु|लिंग|ग्राम|पता|तारीख|उम्र|पंजीकरण)\b|[\n,|;।]|$)"
+            r"\s*[:\-=ः]+\s*([^\n,|;।]+?)(?=\s{2,}|\s+(?:आयु|लिंग|ग्राम|पता|तारीख|उम्र|पंजीकरण)\b|[\n,|;।]|$)"
         ),
     ),
     # Explicit relative labels
@@ -140,28 +144,29 @@ _LABELED_NAME_PATTERNS: list[tuple[str, re.Pattern[str]]] = [
         "RELATIVE_NAME",
         re.compile(
             r"(?i)(?:(?:पिता|माता|माँ)(?:/(?:पति|पिता))?\s*का\s*नाम|"
-            r"(?:पति|पत्नी|भाई|बहन|बेटा|बेटी|दादा|दादी|नाना|नानी)\s*(?:का|की)\s*नाम|"
+            r"(?:पति|पत्नी|भाई|बहन|बेटा|बेटी|दादा|दादी|नाना|नानी|सास|ससुर|देवर|जेठ|ननद|जीजाजी|भाभी|चाचा|मामा|फूफा|बुआ|मौसी)\s*(?:का|की)\s*नाम|"
             r"Attendant|Guardian|Relative\s*Name)"
-            r"\s*[:\-]\s*(?:C/O\s*)?([^\n,|;।]+?)(?=\s{2,}|\s*(?:,|Mob|Mobile|Phone|Ward|\()|[\n|;।]|$)"
+            r"\s*[:\-=ः]+\s*(?:C/O\s*)?([^\n,|;।]+?)(?=\s{2,}|\s*(?:,|Mob|Mobile|Phone|Ward|\()|[\n|;।]|$)"
         ),
     ),
-    # Hinglish kinship relative frames: "maa ka naam Savitri Devi", "baap ka naam ...", "bhai ka naam ..."
+    # Hinglish kinship relative frames: "maa ka naam Savitri Devi", "saas ka naam ...", etc.
     (
         "RELATIVE_NAME",
         re.compile(
-            r"(?i)\b(?:maa|ma|baap|pita|pati|patni|bhai|behen|bahan|beta|beti|bahu|dada|dadi|nana|nani)\s+"
-            r"(?:ka|ki)\s+naam\s*[:\-]?\s*"
+            r"(?i)\b(?:maa|ma|baap|pita|pati|patni|bhai|behen|bahan|beta|beti|bahu|"
+            r"dada|dadi|nana|nani|saas|sasur|devar|jeth|nanad|jijaji|bhabhi|chacha|mama|fufa|bua|mausi)\s+"
+            r"(?:ka|ki)\s+naam\s*[:\-=]?\s*"
             r"([A-Z\u0900-\u097f][a-zA-Z\u0900-\u097f.'-]+(?:\s+[A-Z\u0900-\u097f][a-zA-Z\u0900-\u097f.'-]+){0,2})"
-            r"(?=\s*(?:hai|tha|thi|hain|,|;|\.|।|\n|$))"
+            r"(?=\s*(?:hai|tha|thi|hain|aur|,|;|\.|।|\n|$))"
         ),
     ),
     # Devanagari kinship relative frames without colon: "माता का नाम सावित्री देवी है"
     (
         "RELATIVE_NAME",
         re.compile(
-            r"(?:माता|माँ|पिता|पति|पत्नी|भाई|बहन|बेटा|बेटी|दादा|दादी|नाना|नानी)\s+(?:का|की)\s+नाम\s+"
+            r"(?:माता|माँ|पिता|पति|पत्नी|भाई|बहन|बेटा|बेटी|दादा|दादी|नाना|नानी|सास|ससुर|देवर|जेठ|ननद|जीजाजी|भाभी|चाचा|मामा|फूफा|बुआ|मौसी)\s+(?:का|की)\s+नाम\s+"
             r"([\u0900-\u097f]{2,}(?:\s+[\u0900-\u097f]{2,}){0,2})"
-            r"(?=\s*(?:है|था|थी|हैं|,|;|\.|।|\n|$))"
+            r"(?=\s*(?:है|था|थी|हैं|और|,|;|\.|।|\n|$))"
         ),
     ),
     # Relation markers S/o, D/o, W/o, C/O (only if not protected clinical C/O complaint)
@@ -169,7 +174,7 @@ _LABELED_NAME_PATTERNS: list[tuple[str, re.Pattern[str]]] = [
     (
         "RELATIVE_NAME",
         re.compile(
-            r"(?i)\b(?:S/o|D/o|W/o)\s*[:\-]?\s*([A-Z\u0900-\u097f][^\n,;|()।]{1,45}?)(?=\s*(?:,|;|\)|H\.?No|House|Makan|Ward|Vill|Gram|Tehsil|Distt|मकान|मोहल्ला|तहसील|जिला|PIN|Mob|\n|$))"
+            r"(?i)\b(?:[SDW]\s*/\s*o)\s*[:\-]?\s*([A-Z\u0900-\u097f][^\n,;|()।]{1,45}?)(?=\s*(?:,|;|\)|H\.?No|House|Makan|Ward|Vill|Gram|Tehsil|Distt|मकान|मोहल्ला|तहसील|जिला|PIN|Mob|\n|$))"
         ),
     ),
     (
@@ -195,7 +200,7 @@ _LABELED_NAME_PATTERNS: list[tuple[str, re.Pattern[str]]] = [
     (
         "PATIENT_NAME",
         re.compile(
-            r"(?i)\b([A-Z][a-z]{2,}(?:\s+[A-Z][a-z]{2,})?)\s+(?:ka\s+BP|ki\s+condition|ko\s+\d+\s+din|ki\s+tabiyat)\b"
+            r"(?i)\b([A-Z][a-z]{2,}(?:\s+[A-Z][a-z]{2,})?)\s+(?:ka\s+BP|ki\s+(?:condition|tabiyat|report|dawa|chutti|bharti|test)|ko\s+\d+\s+din|ne\s+(?:bataya|kaha|likha|diya))\b"
         ),
     ),
     (
@@ -395,7 +400,11 @@ def detect_name_spans(
             cand = text[span_start:span_end]
             num_toks = j - i + 1
             # Single token only redacted if matched within-doc OR unmistakably Devanagari name token (not stopword)
-            if num_toks >= 2 or in_doc or (is_deva and raw_tok in DEVA_NAME_TOKENS):
+            is_deva_gaz = is_deva and (
+                raw_tok in DEVA_NAME_TOKENS
+                or (len(canon_tok) >= 3 and canon_tok in LATIN_NAME_TOKENS and canon_tok not in NON_NAME_STOPWORDS)
+            )
+            if num_toks >= 2 or in_doc or is_deva_gaz:
                 if not _is_stopword_phrase(cand) and not _overlaps(span_start, span_end):
                     tag = replace_with if replace_with else "PATIENT_NAME"
                     spans.append((span_start, span_end, tag))

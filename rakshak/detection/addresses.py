@@ -19,10 +19,11 @@ _HOUSE_RE = re.compile(
 _LOCALITY_RE = re.compile(
     r"(?i)(?:"
     r"\bWard\s*(?:No\.?)?\s*\d+\b|"
+    r"\b(?:Gali|Lane|Street|St\.|Sector|Phase|Chawl)\s+(?:No\.?\s*)?[A-Za-z0-9/-]+|"
     r"\b(?:Mohalla|Moh\.?|Colony|Nagar|Basti|Tola|Enclave|Vihar|Puram)\s+[A-Z\u0900-\u097f][\w\u0900-\u097f-]*(?:\s+[A-Z\u0900-\u097f][\w\u0900-\u097f-]*){0,3}|"
     r"\b[A-Z][a-z]+\s+(?:Nagar|Colony|Basti|Tola|Bazar|Bazaar|Chowk|Vihar|Puram|Ganj)\b|"
-    r"मोहल्ला\s+[^\n,;|।]+|"
-    r"वार्ड\s*(?:नं\.?)?\s*[0-9\u0966-\u096f]+"
+    r"(?:मोहल्ला|कॉलोनी)\s+[^\n,;|।]+|"
+    r"(?:वार्ड|गली|सेक्टर|फेज)\s*(?:नं\.?|नंबर)?\s*[0-9\u0966-\u096fA-Za-z\u0900-\u097f-]+"
     r")"
 )
 
@@ -107,19 +108,19 @@ def detect_address_spans(
     for m in _VILLAGE_BEFORE_TEHSIL_RE.finditer(text):
         _add(m.start(1), m.end(1), "VILLAGE")
 
-    for m in _LOCALITY_RE.finditer(text):
-        # Extra guard: do not touch "Ward N" if immediately followed by "(Dept)" or "/ Bed"
-        tail = text[m.end() : m.end() + 25]
-        if re.match(r"^\s*(?:\([^)]+\)|/\s*Bed\b)", tail, re.IGNORECASE):
-            continue
-        _add(m.start(), m.end(), "LOCALITY")
-
     for m in _TEHSIL_RE.finditer(text):
         _add(m.start(), m.end(), "TEHSIL")
 
     if not keep_district:
         for m in _DISTRICT_RE.finditer(text):
             _add(m.start(), m.end(), "DISTRICT")
+
+    for m in _LOCALITY_RE.finditer(norm_text):
+        # Extra guard: do not touch "Ward N" if immediately followed by "(Dept)" or "/ Bed"
+        tail = text[m.end() : m.end() + 25]
+        if re.match(r"^\s*(?:\([^)]+\)|/\s*Bed\b)", tail, re.IGNORECASE):
+            continue
+        _add(m.start(), m.end(), "LOCALITY")
 
     for m in _PIN_CONTEXT_RE.finditer(norm_text):
         pin = m.group(1)
