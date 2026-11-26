@@ -152,6 +152,7 @@ _ABBREV_MAP = {
     "behenji": "",
     "didi": "",
     "babu": "",
+    "amma": "",
 }
 
 

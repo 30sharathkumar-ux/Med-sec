@@ -64,130 +64,54 @@ from rakshak.reporting.records import (
 from rakshak.reporting.report import build_report, write_report
 from rakshak.security.logging import emit_summary
 
+from rakshak.detection.identifiers import detect_identifier_spans, apply_span_replacements
+from rakshak.detection.names import detect_name_spans
+from rakshak.detection.addresses import detect_address_spans
+from rakshak.detection.structured import classify_field
+from rakshak.detection.hidden_surfaces import (
+    sanitize_filename,
+    sanitize_csv_header,
+    sanitize_json_key,
+    sanitize_metadata_value,
+    sanitize_base64_text,
+)
+
+_ALPHABET = "0123456789ABCDEFGHJKMNPQRSTVWXYZ"
 
 # ---------------------------------------------------------------------------
-# Baseline PII detection patterns (kept from Stage 2-3; Laptop B will enhance)
+# DOB patterns in free text (not field-classified)
 # ---------------------------------------------------------------------------
-
-_BASELINE_PATTERNS = [
-    ("PHONE", re.compile(r'(?<!\d)(?:\+?91[\s-]?)?[6-9]\d{4}[\s-]?\d{5}(?!\d)')),
-    ("AADHAAR", re.compile(r'(?<!\d)\d{4}[\s-]?\d{4}[\s-]?\d{4}(?!\d)')),
-    ("AADHAAR_MASKED", re.compile(r'(?i)\bXXXX[\s-]?XXXX[\s-]?\d{4}\b')),
-    ("EMAIL", re.compile(r'[\w.+-]+@[\w-]+\.[\w.]+')),
-    ("PAN", re.compile(r'\b[A-Z]{5}\d{4}[A-Z]\b')),
-    ("ABHA", re.compile(r'(?<!\d)\d{2}[-\s]?\d{4}[-\s]?\d{4}[-\s]?\d{4}(?!\d)')),
-    ("INSURANCE_ID", re.compile(r'\b(?:INS|POL|PLY)[-/]?\d{6,15}\b', re.IGNORECASE)),
-]
-
-# Base64 detection for embedded PII
-_BASE64_RE = re.compile(r'(?:[A-Za-z0-9+/]{4}){4,}(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?')
-
-def _decode_and_clean_base64(text: str, entity_counts: Counter) -> str:
-    """Find base64 blobs, decode them, clean PII, re-encode."""
-    import base64
-    def _replace_b64(m: re.Match) -> str:
-        blob = m.group(0)
-        try:
-            decoded = base64.b64decode(blob).decode('utf-8', errors='ignore')
-            if len(decoded) > 10:
-                # Check if decoded content has PII
-                has_pii = False
-                for kind, rx in _BASELINE_PATTERNS:
-                    if rx.search(decoded):
-                        has_pii = True
-                        break
-                # Also check for name-like patterns
-                if re.search(r'[A-Z][a-z]+\s+[A-Z][a-z]+', decoded):
-                    has_pii = True
-                if has_pii:
-                    entity_counts['BASE64_PII'] += 1
-                    cleaned = _clean_text_internal(decoded, entity_counts)
-                    return base64.b64encode(cleaned.encode('utf-8')).decode('ascii')
-        except Exception:
-            pass
-        return blob
-    return _BASE64_RE.sub(_replace_b64, text)
-
-
-def _clean_text_internal(text: str, entity_counts: Counter, pseudonym_str: str = '') -> str:
-    """Core text cleaning without base64 handling (to avoid recursion)."""
-    for kind, rx in _BASELINE_PATTERNS:
-        text, n = rx.subn(f"[{kind}]", text)
-        if n:
-            entity_counts[kind] += n
-
-    def _replace_name(m: re.Match) -> str:
-        entity_counts['PATIENT_NAME'] += 1
-        prefix = m.group(0)[:m.start(1) - m.start(0)]
-        replacement = pseudonym_str if pseudonym_str else '[NAME]'
-        return prefix + replacement
-
-    text = _NAME_LABEL_RE.sub(_replace_name, text)
-
-    def _replace_relative(m: re.Match) -> str:
-        entity_counts['RELATIVE_NAME'] += 1
-        prefix = m.group(0)[:m.start(1) - m.start(0)]
-        return prefix + '[RELATIVE]'
-
-    text = _RELATIVE_LABEL_RE.sub(_replace_relative, text)
-    return text
-
-# Name detection patterns for text
-_NAME_LABEL_RE = re.compile(
-    r'(?:(?:Patient|Pt\.?|Name|नाम|मरीज|Patient\'?s?\s*Name)\s*[:：]\s*)([^\n,;|]+)',
-    re.IGNORECASE,
-)
-_RELATIVE_LABEL_RE = re.compile(
-    r'(?:(?:S|D|W|C)\s*/\s*(?:o|O)\s+)([A-Za-z\u0900-\u097F][A-Za-z\u0900-\u097F\s.]+?)(?:\s*[,;|\n]|$)',
-    re.IGNORECASE,
+_DOB_RE = re.compile(
+    r"(?i)(?:DOB|Date\s+of\s+Birth|D\.O\.B\.?|Birth\s*Date|"
+    r"जन्म\s*(?:तिथि|तारीख)?|Janm\s*Tithi)"
+    r"\s*[:=\-]\s*"
+    r"(\d{1,2}[/.\-]\d{1,2}[/.\-]\d{2,4})"
 )
 
-# Column/key classifiers for structured PII detection
-_PII_COLUMN_PATTERNS = {
-    'name': re.compile(
-        r'(?:patient|mareez|mariz)[\s_]*(?:name|naam|ka\s*naam)?'
-        r'|^name$|^naam$|^full[\s_]*name$|patient.s?\s*name'
-        r'|first[\s_]*name|last[\s_]*name|local',
-        re.IGNORECASE,
-    ),
-    'phone': re.compile(r'mobile|phone|contact|दूरभाष|मोबाइल|fone|tel', re.IGNORECASE),
-    'aadhaar': re.compile(r'aadh?a?r|आधार', re.IGNORECASE),
-    'abha': re.compile(r'abha[\s_]*(?:no|number|id|address)?', re.IGNORECASE),
-    'mrn': re.compile(
-        r'uhid|mrd?n|ipd[\s_]*(?:no|number)?|opd[\s_]*(?:no|number)?'
-        r'|reg[\s_]*(?:no|number|id)?|patient[\s_]*(?:id|ref)',
-        re.IGNORECASE,
-    ),
-    'email': re.compile(r'email|e[\s_-]*mail', re.IGNORECASE),
-    'pan': re.compile(r'^pan$|pan[\s_]*(?:no|number|card)', re.IGNORECASE),
-    'insurance': re.compile(r'insurance|bima|policy[\s_]*(?:no|number|id)', re.IGNORECASE),
-    'relative': re.compile(
-        r'relative|guardian|father|mother|husband|wife|spouse'
-        r'|pita[\s_]*(?:ka\s*naam)?|mata|pati|patni|relation[\s_]*name',
-        re.IGNORECASE,
-    ),
-    'address': re.compile(r'address|pata|पता|निवास|line|street|rasta|gali', re.IGNORECASE),
-    'village': re.compile(r'village|gram|gaon|गाँव|ग्राम|mohalla|city|town|sheher', re.IGNORECASE),
-    'house': re.compile(r'house|makan|h\.?\s*no', re.IGNORECASE),
-    'landmark': re.compile(r'landmark|near|opp', re.IGNORECASE),
-    'dob': re.compile(r'dob|date[\s_]*of[\s_]*birth|janm[\s_]*tithi|जन्म', re.IGNORECASE),
-    'age': re.compile(r'^age$|^umar$|^उम्र$|^आयु$', re.IGNORECASE),
-    'pin': re.compile(r'pin[\s_]*(?:code)?|postal|डाक|zip', re.IGNORECASE),
-}
-
-# Columns to generalize (not remove entirely)
-_GENERALIZE_COLUMNS = {'age', 'dob', 'village', 'pin', 'address', 'house', 'landmark'}
-
-# Columns that are PII to replace
-_REPLACE_COLUMNS = {'name', 'phone', 'aadhaar', 'abha', 'mrn', 'email', 'pan',
-                     'insurance', 'relative'}
-
-# Metadata keys that may contain PII
-_METADATA_PII_KEYS = re.compile(
-    r'source[\s_]*path|file[\s_]*name|export[\s_]*path|original[\s_]*file',
-    re.IGNORECASE,
+# Admission / Discharge / Registration date labels (quasi-identifiers)
+_DATED_LABEL_RE = re.compile(
+    r"(?i)(?:Date\s+of\s+(?:Admission|Discharge|Registration|Visit|Collection|Report)|"
+    r"Admission\s+Date|Discharge\s+Date|Reg\.?\s*Date|Visit\s*Date|"
+    r"भर्ती\s*(?:की\s+)?तारीख|छुट्टी\s*(?:की\s+)?तारीख)"
+    r"\s*[:=\-]\s*"
+    r"(\d{1,2}[/.\-]\d{1,2}[/.\-]\d{2,4})"
 )
 
+# PII field types that cause wholesale cell/value redaction in structured data
+_DIRECT_PII = frozenset({
+    "PATIENT_NAME", "RELATIVE_NAME", "PHONE", "MRN", "AADHAAR",
+    "ABHA_NUMBER", "ABHA_ADDRESS", "PAN", "EMAIL", "INSURANCE_ID",
+    "DOB", "ADDRESS", "HOUSE", "LOCALITY", "VILLAGE",
+    "PIN", "VILLAGE_OR_LOCALITY",
+})
+
+_KEEP_TYPES = frozenset({
+    "CLINICAL_KEEP", "AGE", "GENDER", "AGE_SEX", "RELATION_LABEL",
+    "DISTRICT", "TEHSIL",
+})
+
+
+# ===================== policy / secret / pseudonym ========================
 
 def load_policy(path: Path) -> dict[str, Any]:
     """Load simple `key: value` policy settings without external YAML dependencies."""
@@ -201,25 +125,55 @@ def load_policy(path: Path) -> dict[str, Any]:
     return policy
 
 
+def _get_secret() -> bytes:
+    """Read RAKSHA_SECRET dynamically at runtime (never cache or log)."""
+    return os.environ.get("RAKSHA_SECRET", "").encode("utf-8")
+
 # ---------------------------------------------------------------------------
 # PII Cleaning
 # ---------------------------------------------------------------------------
 
 def _classify_column(col_name: str) -> Optional[str]:
-    """Classify a column/key name as a PII type or None."""
-    col_lower = col_name.strip().lower()
-    for pii_type, pattern in _PII_COLUMN_PATTERNS.items():
-        if pattern.search(col_lower):
-            return pii_type
-    return None
+    """Map the detection engine's field types to the privacy transform types."""
+    field_type = classify_field(col_name)
+    return {
+        "PATIENT_NAME": "name",
+        "RELATIVE_NAME": "relative",
+        "PHONE": "phone",
+        "MRN": "mrn",
+        "AADHAAR": "aadhaar",
+        "ABHA_NUMBER": "abha",
+        "ABHA_ADDRESS": "abha",
+        "PAN": "pan",
+        "EMAIL": "email",
+        "INSURANCE_ID": "insurance",
+        "DOB": "dob",
+        "DATE": "date",
+        "ADDRESS": "address",
+        "HOUSE": "house",
+        "LOCALITY": "village",
+        "VILLAGE": "village",
+        "VILLAGE_OR_LOCALITY": "village",
+        "PIN": "pin",
+        "AGE": "age",
+        "CLINICAL_KEEP": "clinical_keep",
+        "GENDER": "gender",
+        "AGE_SEX": "age_sex",
+        "RELATION_LABEL": "relation_label",
+        "DISTRICT": "district",
+        "TEHSIL": "tehsil",
+        "METADATA_PATH": "metadata_path",
+        "BASE64_DATA": "base64_data",
+    }.get(field_type)
+
+
+_GENERALIZE_COLUMNS = {'age', 'dob', 'village', 'pin', 'address', 'house', 'landmark'}
+_REPLACE_COLUMNS = {'name', 'phone', 'aadhaar', 'abha', 'mrn', 'email', 'pan', 'insurance', 'relative'}
 
 
 def _clean_text(text: str, entity_counts: Counter, pseudonym_str: str = '') -> str:
-    """Replace detected identifiers with typed placeholders, including base64."""
-    # First handle base64-embedded PII
-    text = _decode_and_clean_base64(text, entity_counts)
-    # Then clean regular text PII
-    return _clean_text_internal(text, entity_counts, pseudonym_str)
+    """Clean text with the full multilingual detection engine."""
+    return _clean_text_full(text, entity_counts)
 
 
 def _clean_csv_value(val: str, col_type: Optional[str], entity_counts: Counter,
@@ -228,14 +182,25 @@ def _clean_csv_value(val: str, col_type: Optional[str], entity_counts: Counter,
     if not val.strip():
         return val
 
+    if col_type in {"clinical_keep", "gender", "age_sex", "relation_label",
+                    "district", "tehsil"}:
+        return val
+    if col_type == "date":
+        entity_counts["DATE"] += 1
+        return "[DATE]"
+    if col_type == "metadata_path":
+        return sanitize_metadata_value(val, lambda t: _clean_text_full(t, entity_counts))
+    if col_type == "base64_data":
+        return sanitize_base64_text(val, lambda t: _clean_text_full(t, entity_counts))
+
     if col_type in _REPLACE_COLUMNS:
         entity_counts[col_type.upper()] += 1
         if col_type == 'name':
             entity_counts['PATIENT_NAME'] += 1
-            return pseudonym_str if pseudonym_str else '[NAME]'
+            return pseudonym_str if pseudonym_str else '[PATIENT_NAME]'
         elif col_type == 'relative':
             entity_counts['RELATIVE_NAME'] += 1
-            return '[RELATIVE]'
+            return '[RELATIVE_NAME]'
         elif col_type == 'phone':
             entity_counts['PHONE'] += 1
             return '[PHONE]'
@@ -256,7 +221,7 @@ def _clean_csv_value(val: str, col_type: Optional[str], entity_counts: Counter,
             return '[PAN]'
         elif col_type == 'insurance':
             entity_counts['INSURANCE_ID'] += 1
-            return '[INSURANCE]'
+            return '[INSURANCE_ID]'
         return '[REDACTED]'
 
     if col_type in _GENERALIZE_COLUMNS:
@@ -267,13 +232,15 @@ def _clean_csv_value(val: str, col_type: Optional[str], entity_counts: Counter,
                 return age_band(age_val, band_width)
             except (ValueError, AttributeError):
                 return val
-        elif col_type == 'dob' and patient_key:
-            shifted = shift_date_string(val, patient_key,
-                                        int(policy.get('date_shift_max_days', 180)))
-            if shifted:
-                entity_counts['DOB'] += 1
-                return shifted
-            return val
+        elif col_type == 'dob':
+            if patient_key:
+                shifted = shift_date_string(val, patient_key,
+                                            int(policy.get('date_shift_max_days', 180)))
+                if shifted:
+                    entity_counts['DOB'] += 1
+                    return shifted
+            entity_counts['DOB'] += 1
+            return '[DOB]'
         elif col_type == 'village':
             entity_counts['VILLAGE'] += 1
             return '[VILLAGE]'
@@ -282,71 +249,188 @@ def _clean_csv_value(val: str, col_type: Optional[str], entity_counts: Counter,
             return generalize_pin(val)
         elif col_type == 'address':
             entity_counts['ADDRESS'] += 1
-            # Generalize: remove house numbers, ward numbers, landmarks
-            from rakshak.privacy.transforms import generalize_address as gen_addr
-            return gen_addr(val)
+            return '[ADDRESS]'
         elif col_type in ('house', 'landmark'):
             entity_counts['HOUSE'] += 1
             return '[SUPPRESSED]'
         return val
 
-    # For unclassified columns, apply baseline text detection
-    return _clean_text(val, entity_counts, pseudonym_str)
+    # For unclassified columns, apply full multilingual text detection
+    return _clean_text_full(val, entity_counts)
+
+
+# =================== full text cleaning ==================================
+
+def _clean_text_full(
+    text: str,
+    entity_counts: Counter[str],
+    known_names: set[str] | None = None,
+) -> str:
+    """Comprehensive PII detection and redaction using all detection modules."""
+    if not text or not text.strip():
+        return text
+
+    all_spans: list[tuple[int, int, str]] = []
+
+    # 1. Identifier detection (phone, aadhaar, pan, mrn, insurance, email, abha)
+    all_spans.extend(detect_identifier_spans(text))
+
+    # 2. Name detection (patient, relative — context labels + gazetteer)
+    all_spans.extend(detect_name_spans(text, known_names))
+
+    # 3. Address detection (house, landmark, village, locality, tehsil, district, pin)
+    all_spans.extend(detect_address_spans(text))
+
+    # 4. DOB patterns in free text
+    for m in _DOB_RE.finditer(text):
+        all_spans.append((m.start(1), m.end(1), "DOB"))
+
+    # 5. Admission / discharge dates in free text
+    for m in _DATED_LABEL_RE.finditer(text):
+        all_spans.append((m.start(1), m.end(1), "DATE"))
+
+    if not all_spans:
+        return text
+
+    return apply_span_replacements(text, all_spans, entity_counts)
+
+
+# ==================== JSON pre-scan for names =============================
+
+def _collect_names_json(data: Any) -> set[str]:
+    """Pre-scan JSON to collect name strings from classified fields."""
+    names: set[str] = set()
+    _walk_names(data, "", names)
+    return names
+
+
+def _walk_names(value: Any, parent_key: str, names: set[str]) -> None:
+    if isinstance(value, str):
+        return
+    if isinstance(value, list):
+        for item in value:
+            _walk_names(item, parent_key, names)
+        return
+    if isinstance(value, dict):
+        rt = value.get("resourceType", "")
+        ep = rt.lower() if rt else parent_key
+        for k, v in value.items():
+            fc = classify_field(k, ep)
+            if fc in ("PATIENT_NAME", "RELATIVE_NAME"):
+                _add_name_strings(v, names)
+            _walk_names(v, k, names)
+
+
+def _add_name_strings(value: Any, names: set[str]) -> None:
+    if isinstance(value, str):
+        v = value.strip()
+        if v and len(v) > 1 and not v.startswith(("urn:", "http:", "#", "{")):
+            names.add(v)
+    elif isinstance(value, list):
+        for item in value:
+            _add_name_strings(item, names)
+    elif isinstance(value, dict):
+        for v in value.values():
+            _add_name_strings(v, names)
+
+
+# =================== recursive JSON cleaning ==============================
+
+def _clean_json_full(
+    value: Any,
+    entity_counts: Counter[str],
+    parent_key: str = "",
+    doc_names: set[str] | None = None,
+) -> Any:
+    """Recursively clean JSON using field classification + text detection."""
+    if isinstance(value, str):
+        return _clean_text_full(value, entity_counts, doc_names)
+    if isinstance(value, (int, float, bool)) or value is None:
+        return value
+    if isinstance(value, list):
+        return [_clean_json_full(item, entity_counts, parent_key, doc_names) for item in value]
+    if not isinstance(value, dict):
+        return value
+
+    result: dict[str, Any] = {}
+    used_keys: set[str] = set()
+
+    def _text_cleaner(t: str) -> str:
+        return _clean_text_full(t, entity_counts, doc_names)
+
+    # Use FHIR resourceType as effective parent context
+    resource_type = value.get("resourceType", "")
+    effective_parent = resource_type.lower() if resource_type else parent_key
+
+    for k, v in value.items():
+        fc = classify_field(k, effective_parent)
+
+        # Sanitize key if it contains PII (e.g. patient_index.json by_name keys)
+        clean_k = sanitize_json_key(k, _text_cleaner, used_keys=used_keys)
+
+        if fc == "CLINICAL_KEEP":
+            result[clean_k] = v
+
+        elif fc in _DIRECT_PII:
+            if isinstance(v, str):
+                if v.strip():
+                    # Collect name for cross-reference before redaction
+                    if fc in ("PATIENT_NAME", "RELATIVE_NAME") and doc_names is not None:
+                        doc_names.add(v.strip())
+                    result[clean_k] = f"[{fc}]"
+                    entity_counts[fc] += 1
+                else:
+                    result[clean_k] = v
+            elif isinstance(v, (int, float)):
+                # Numeric PII values (e.g. Aadhaar stored as integer)
+                result[clean_k] = f"[{fc}]"
+                entity_counts[fc] += 1
+            elif isinstance(v, list) and v and all(isinstance(x, str) for x in v):
+                # List of strings under a PII key (e.g. FHIR given: ["Fatima"])
+                new_list: list[str] = []
+                for x in v:
+                    if x.strip():
+                        if fc in ("PATIENT_NAME", "RELATIVE_NAME") and doc_names is not None:
+                            doc_names.add(x.strip())
+                        new_list.append(f"[{fc}]")
+                        entity_counts[fc] += 1
+                    else:
+                        new_list.append(x)
+                result[clean_k] = new_list
+            else:
+                # Nested dict/list — recurse to clean sub-values
+                result[clean_k] = _clean_json_full(v, entity_counts, k, doc_names)
+
+        elif fc == "DATE":
+            if isinstance(v, str) and v.strip():
+                result[clean_k] = "[DATE]"
+                entity_counts["DATE"] += 1
+            else:
+                result[clean_k] = _clean_json_full(v, entity_counts, k, doc_names) if not isinstance(v, str) else v
+
+        elif fc == "METADATA_PATH":
+            result[clean_k] = sanitize_metadata_value(v, _text_cleaner) if isinstance(v, str) else v
+
+        elif fc == "BASE64_DATA":
+            result[clean_k] = sanitize_base64_text(v, _text_cleaner) if isinstance(v, str) else v
+
+        elif fc in _KEEP_TYPES:
+            result[clean_k] = v
+
+        else:
+            # Unclassified — recurse
+            result[clean_k] = _clean_json_full(v, entity_counts, k, doc_names)
+
+    return result
 
 
 def _clean_json_value(value: Any, entity_counts: Counter,
                       pseudonym_str: str, policy: dict,
                       patient_key: Optional[str],
                       key_name: str = '') -> Any:
-    """Recursively clean JSON values based on key classification."""
-    if isinstance(value, str):
-        col_type = _classify_column(key_name) if key_name else None
-
-        # Check for metadata PII paths
-        if key_name and _METADATA_PII_KEYS.search(key_name):
-            entity_counts['METADATA'] += 1
-            return '[METADATA_REDACTED]'
-
-        if col_type:
-            return _clean_csv_value(value, col_type, entity_counts,
-                                    pseudonym_str, policy, patient_key)
-        return _clean_text(value, entity_counts, pseudonym_str)
-
-    if isinstance(value, (int, float)):
-        col_type = _classify_column(key_name) if key_name else None
-        if col_type == 'aadhaar':
-            entity_counts['AADHAAR'] += 1
-            return '[AADHAAR]'
-        if col_type == 'phone':
-            entity_counts['PHONE'] += 1
-            return '[PHONE]'
-        return value
-
-    if isinstance(value, list):
-        return [_clean_json_value(x, entity_counts, pseudonym_str, policy,
-                                  patient_key, key_name)
-                for x in value]
-
-    if isinstance(value, dict):
-        result = {}
-        for k, v in value.items():
-            # Clean PII from JSON keys
-            clean_key = k
-            if isinstance(k, str):
-                # Check if key itself contains PII (names, phones, paths)
-                if re.search(r'[6-9]\d{9}', k) or re.search(r'[A-Z][a-z]+_[A-Z][a-z]+', k):
-                    clean_key = _clean_text(k, entity_counts)
-                    entity_counts['KEY_PII'] = entity_counts.get('KEY_PII', 0) + 1
-                elif _METADATA_PII_KEYS.search(k):
-                    pass  # key name is fine, value will be cleaned
-                elif any('\u0900' <= ch <= '\u097F' for ch in k):
-                    # Devanagari in keys — might be a patient name used as key
-                    clean_key = _clean_text(k, entity_counts)
-            result[clean_key] = _clean_json_value(v, entity_counts, pseudonym_str,
-                                                   policy, patient_key, k)
-        return result
-
-    return value
+    """Clean JSON values using context-aware detection and hidden-surface checks."""
+    names = _collect_names_json(value)
+    return _clean_json_full(value, entity_counts, key_name, names)
 
 
 # ---------------------------------------------------------------------------
@@ -418,16 +502,26 @@ def _process_csv(
     policy: dict,
     cluster_keys: dict[str, Optional[str]],
     secret: bytes,
+    orig_rel: str | None = None,
 ) -> str:
     """Process a CSV/TSV file: detect PII, link records, apply privacy transforms."""
     header, body = ing.parsed
     out_rel = ing.rel_path
-    hospital = _detect_hospital(ing.rel_path)
+    lookup_rel = orig_rel or out_rel
 
     # Classify columns
     col_types = [_classify_column(col) for col in header]
 
-    # Find or add patient_ref column
+    # Collect names from name columns for cross-reference in free-text cells
+    doc_names: set[str] = set()
+    for row in body:
+        for ci, cell in enumerate(row):
+            if ci < len(col_types) and col_types[ci] in ("name", "relative"):
+                v = cell.strip()
+                if v:
+                    doc_names.add(v)
+
+    # Find patient_ref column
     patient_ref_col = None
     for idx, col in enumerate(header):
         if re.search(r'patient[\s_]*(?:ref|id)|uhid|mrd?n', col.lower()):
@@ -437,23 +531,15 @@ def _process_csv(
     buf = io.StringIO()
     writer = csv.writer(buf, delimiter=ing.delimiter or ",", lineterminator="\n")
 
-    # Clean header (rename only if header itself contains PII)
-    clean_header = []
-    for col in header:
-        # Check if the header cell itself contains PII values (not just column names)
-        h_cleaned = col
-        for kind, rx in _BASELINE_PATTERNS:
-            h_cleaned, n = rx.subn(f"[{kind}]", h_cleaned)
-            if n:
-                entity_counts[f'HEADER_{kind}'] = entity_counts.get(f'HEADER_{kind}', 0) + n
-        # Check for name-like content in headers (e.g. "Patient: Ramesh Kumar" as header)
-        if re.search(r'[A-Z][a-z]+\s+[A-Z][a-z]+', h_cleaned) and not _classify_column(h_cleaned):
-            h_cleaned = _clean_text_internal(h_cleaned, entity_counts)
-        clean_header.append(h_cleaned)
+    # Clean header using Laptop B's sanitize_csv_header
+    clean_header = sanitize_csv_header(
+        header,
+        lambda t: _clean_text_full(t, entity_counts, doc_names),
+    )
     writer.writerow(clean_header)
 
     for idx, row in enumerate(body):
-        record_id = f"sanitized/{out_rel}::row:{idx}"
+        record_id = f"sanitized/{lookup_rel}::row:{idx}"
         patient_key = cluster_keys.get(record_id)
         psn = generate_pseudonym(patient_key, secret) if patient_key else None
 
@@ -467,8 +553,6 @@ def _process_csv(
                 cleaned = psn
             cleaned_row.append(cleaned)
 
-        # If no existing patient_ref column, we still write the pseudonym
-        # via records.jsonl consistency requirement
         writer.writerow(cleaned_row)
 
         rec_entry = {
@@ -491,10 +575,12 @@ def _process_json(
     policy: dict,
     cluster_keys: dict[str, Optional[str]],
     secret: bytes,
+    orig_rel: str | None = None,
 ) -> str:
     """Process a JSON/FHIR file: detect PII, link records, apply privacy transforms."""
     data = ing.parsed
     out_rel = ing.rel_path
+    lookup_rel = orig_rel or out_rel
     has_records = (
         isinstance(data, dict)
         and ing.fmt != "fhir"
@@ -504,7 +590,7 @@ def _process_json(
     is_doc = not has_records
 
     if is_doc:
-        record_id = f"sanitized/{out_rel}::doc"
+        record_id = f"sanitized/{lookup_rel}::doc"
         patient_key = cluster_keys.get(record_id)
         psn = generate_pseudonym(patient_key, secret) if patient_key else None
 
@@ -514,7 +600,6 @@ def _process_json(
         # Inject pseudonym for FHIR bundles
         if psn and isinstance(cleaned, dict):
             if cleaned.get("resourceType") == "Bundle":
-                # Add patient_ref to FHIR bundle
                 cleaned["meta"] = cleaned.get("meta", {})
                 cleaned["meta"]["patient_ref"] = psn
             else:
@@ -532,7 +617,7 @@ def _process_json(
                 cleaned_list = []
                 pk = json_pointer_escape(k)
                 for idx, item in enumerate(v):
-                    record_id = f"sanitized/{out_rel}::/{pk}/{idx}"
+                    record_id = f"sanitized/{lookup_rel}::/{pk}/{idx}"
                     patient_key = cluster_keys.get(record_id)
                     psn = generate_pseudonym(patient_key, secret) if patient_key else None
 
@@ -562,10 +647,12 @@ def _process_text(
     policy: dict,
     cluster_keys: dict[str, Optional[str]],
     secret: bytes,
+    orig_rel: str | None = None,
 ) -> str:
     """Process a text file: detect PII, inject pseudonym."""
     out_rel = ing.rel_path
-    record_id = f"sanitized/{out_rel}::doc"
+    lookup_rel = orig_rel or out_rel
+    record_id = f"sanitized/{lookup_rel}::doc"
     patient_key = cluster_keys.get(record_id)
     psn = generate_pseudonym(patient_key, secret) if patient_key else None
 
@@ -605,7 +692,6 @@ def run_pipeline(input_dir: Path, output_dir: Path, policy_path: Path | None = N
 
     san_dir = output_dir / "sanitized"
     san_dir.mkdir(parents=True, exist_ok=True)
-
     # -----------------------------------------------------------------------
     # Pass 1: Ingest + Evidence Extraction + Identity Resolution
     # -----------------------------------------------------------------------
@@ -626,10 +712,8 @@ def run_pipeline(input_dir: Path, output_dir: Path, policy_path: Path | None = N
         ingested_files.append((ing, meta))
         hospital = _detect_hospital(ing.rel_path)
 
-        # Output relative path (handle PII in filename upfront for consistency)
+        # Use original rel_path in Pass 1 so Pass 2's orig_rel lookup matches
         out_rel = ing.rel_path
-        if _filename_has_pii(Path(out_rel).name):
-            out_rel = _sanitize_filename(out_rel, ing.input_sha256)
 
         # Extract evidence for identity resolution
         if ing.fmt in ("csv", "tsv"):
@@ -679,17 +763,12 @@ def run_pipeline(input_dir: Path, output_dir: Path, policy_path: Path | None = N
     records_generalized = 0
 
     for ing, meta in ingested_files:
-        # Handle PII in filenames
-        out_rel = ing.rel_path
-        renamed = False
-        if _filename_has_pii(Path(out_rel).name):
-            new_rel = _sanitize_filename(out_rel, ing.input_sha256)
-            out_rel = new_rel
-            renamed = True
-            entity_counts['FILENAME_PII'] += 1
-
-        # Create a modified IngestedFile with potentially renamed path
+        # Handle PII in filenames using Laptop B's sanitize_filename
+        orig_rel = ing.rel_path
+        out_rel = sanitize_filename(orig_rel, secret)
+        renamed = out_rel != orig_rel
         if renamed:
+            entity_counts['FILENAME_PII'] += 1
             ing = IngestedFile(
                 rel_path=out_rel,
                 input_sha256=ing.input_sha256,
@@ -700,19 +779,19 @@ def run_pipeline(input_dir: Path, output_dir: Path, policy_path: Path | None = N
                 raw_text=ing.raw_text,
             )
 
-        # Process based on format
+        # Process based on format (pass orig_rel for cluster_keys lookup)
         if ing.fmt in ("csv", "tsv"):
             result_text = _process_csv(ing, records, entity_counts, resolver,
-                                       policy, cluster_keys, secret)
+                                       policy, cluster_keys, secret, orig_rel=orig_rel)
             records_generalized += sum(1 for r in records
                                        if r.get("file") == f"sanitized/{out_rel}"
                                        and r.get("patient"))
         elif ing.fmt in ("json", "fhir"):
             result_text = _process_json(ing, records, entity_counts, resolver,
-                                        policy, cluster_keys, secret)
+                                        policy, cluster_keys, secret, orig_rel=orig_rel)
         else:
             result_text = _process_text(ing, records, entity_counts, resolver,
-                                        policy, cluster_keys, secret)
+                                        policy, cluster_keys, secret, orig_rel=orig_rel)
 
         dest = san_dir / out_rel
         dest.parent.mkdir(parents=True, exist_ok=True)

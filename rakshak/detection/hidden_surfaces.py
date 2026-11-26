@@ -135,7 +135,21 @@ def sanitize_csv_header(
         if pid:
             cand = pid
         else:
-            cand = text_cleaner(col).strip()
+            # For headers with names: replace each name token individually
+            cand = col
+            if has_id:
+                cand = text_cleaner(cand).strip()
+            if has_name:
+                # Replace individual name tokens that survived the text cleaner
+                parts = re.split(r'(\s+)', cand)
+                cleaned_parts = []
+                for part in parts:
+                    low = part.lower().strip()
+                    if len(low) >= 3 and low in LATIN_NAME_TOKENS and low not in NON_NAME_STOPWORDS:
+                        cleaned_parts.append("[PATIENT_NAME]")
+                    else:
+                        cleaned_parts.append(part)
+                cand = "".join(cleaned_parts)
             if cand == col:
                 cand = f"patient_col_{idx}"
         seen[cand] += 1
