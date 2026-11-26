@@ -1,0 +1,6 @@
+# RAKSHA privacy & ingestion policy (simple key: value format)
+age_band_years: 5          # ages become bands like 45-49 (the band must contain the true age)
+date_shift_max_days: 180   # every date of one patient moves by the same secret offset
+min_group_size: 5          # suppress or widen quasi-identifier combos rarer than this
+max_json_depth: 128        # bound nested JSON depth before quarantining
+max_file_bytes: 52428800   # 50 MiB upper bound per input file
