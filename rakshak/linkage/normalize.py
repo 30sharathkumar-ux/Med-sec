@@ -138,6 +138,7 @@ def has_devanagari(text: str) -> bool:
 _HONORIFICS_RE = re.compile(
     r'\b(?:shri|shree|shr[iī]mat[iī]?|श्री|श्रीमती|smt\.?|mr\.?|mrs\.?|ms\.?'
     r'|sahab|sahib|saab|ji|jee|didi|bhaiya|bhai|devi|begum|bibi|babu|master'
+    r'|amma|behenji|chachu|chacha|mama|kaka|tau|ammi|abba|buaji|bua'
     r')\b',
     re.IGNORECASE,
 )

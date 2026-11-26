@@ -14,7 +14,13 @@ from collections import defaultdict
 from dataclasses import dataclass, field
 from typing import Any, Optional
 
+try:
+    from rapidfuzz import fuzz as _fuzz
+except ImportError:
+    _fuzz = None
+
 from rakshak.linkage.normalize import (
+    _INDIC_DIGIT_MAP,
     extract_digits,
     extract_relative_name,
     has_devanagari,
@@ -70,7 +76,7 @@ class RecordEvidence:
 
 # Column/key name classifiers (case-insensitive patterns)
 _NAME_KEYS = re.compile(
-    r'(?:patient|mareez|mariz)[\s_]*(?:name|naam|ka\s*naam)?'
+    r'^(?:patient|mareez|mariz)[\s_]*(?:name|naam|ka\s*naam)$'
     r'|^name$|^naam$|^full[\s_]*name$'
     r'|patient\'s[\s_]*name'
     r'|first[\s_]*name|last[\s_]*name',
@@ -90,7 +96,8 @@ _ABHA_KEYS = re.compile(
 )
 _MRN_KEYS = re.compile(
     r'uhid|mrd?n|ipd[\s_]*(?:no|number)?|opd[\s_]*(?:no|number)?'
-    r'|reg[\s_]*(?:no|number|id)?|patient[\s_]*(?:id|ref)',
+    r'|reg[\s_]*(?:no|number|id)?|patient[\s_]*(?:id|ref)'
+    r'|hospital[\s_]*uhid',
     re.IGNORECASE,
 )
 _AGE_KEYS = re.compile(
@@ -106,9 +113,9 @@ _DOB_KEYS = re.compile(
     re.IGNORECASE,
 )
 _RELATIVE_KEYS = re.compile(
-    r'relative|guardian|father|mother|husband|wife|spouse'
+    r'\b(?:relative|guardian|father|mother|husband|wife|spouse'
     r'|s/o|d/o|w/o|c/o|pita|mata|pati|patni'
-    r'|relation|rishtedar',
+    r'|relation|rishtedar)\b',
     re.IGNORECASE,
 )
 _VILLAGE_KEYS = re.compile(
@@ -373,7 +380,7 @@ def extract_evidence_json(
             for k, v in obj.items():
                 key_lower = k.strip().lower()
                 full_key = f"{prefix}.{key_lower}" if prefix else key_lower
-                if any(p in key_lower for p in ('payer', 'insurer', 'doctor', 'practitioner')):
+                if any(p in key_lower for p in ('payer', 'insurer', 'doctor', 'practitioner', 'panels', 'tests', 'results', 'diagnosis', 'rx', 'vitals')):
                     continue
 
                 if isinstance(v, str):
@@ -381,7 +388,9 @@ def extract_evidence_json(
                     if not val:
                         continue
 
-                    if _NAME_KEYS.search(key_lower) or key_lower in ('first', 'last', 'local'):
+                    if _MRN_KEYS.search(key_lower):
+                        ev.mrns.append(normalize_mrn(val))
+                    elif _NAME_KEYS.search(key_lower) or key_lower in ('first', 'last', 'local'):
                         if key_lower == 'local' and has_devanagari(val):
                             norm = normalize_name(val)
                             if not ev.patient_name_normalized or len(norm) > len(ev.patient_name_normalized):
@@ -486,6 +495,9 @@ def extract_evidence_text(
         hospital=hospital,
     )
 
+    # Convert Indic numerals to ASCII for digit-based patterns
+    text_digits = text.translate(_INDIC_DIGIT_MAP)
+
     # Patient name from labels (stop before Age/Sex/UHID/Relative/newline)
     name_patterns = [
         re.compile(
@@ -505,19 +517,30 @@ def extract_evidence_text(
                 ev.patient_name_phonetic = phonetic_key(name)
                 break
 
-    # Relative name
+    # Relative name from relation pattern or explicit labels
     rel = extract_relative_name(text)
     if rel:
         ev.relative_name_normalized = rel
+    else:
+        # Check explicit relative labels in Hindi/English
+        rel_label_patterns = [
+            re.compile(r'(?:(?:पिता|माता|पति|पत्नी)\s*(?:का\s*नाम)?\s*[:：]\s*)([^\n,;|]+)', re.IGNORECASE),
+            re.compile(r'(?:(?:Father|Mother|Husband|Wife|Spouse|Relative|Guardian)\'?s?\s*(?:Name)?\s*[:：]\s*)([^\n,;|]+)', re.IGNORECASE),
+        ]
+        for rpat in rel_label_patterns:
+            rm = rpat.search(text)
+            if rm:
+                ev.relative_name_normalized = normalize_name(rm.group(1).strip())
+                break
 
     # Phone
-    for m in _PHONE_TEXT_RE.finditer(text):
+    for m in _PHONE_TEXT_RE.finditer(text_digits):
         phone = normalize_phone(m.group(0))
         if phone:
             ev.phones.append(phone)
 
     # Age
-    m = _AGE_TEXT_RE.search(text)
+    m = _AGE_TEXT_RE.search(text_digits)
     if m:
         ev.age = _parse_age(m.group(1))
 
@@ -528,15 +551,72 @@ def extract_evidence_text(
 
     # MRN/UHID (must contain at least one digit and have explicit separator/number marker)
     uhid_re = re.compile(
-        r'(?:UHID|MRN|MRD|IPD\s*(?:No\.?|#|:)|OPD\s*(?:No\.?|#|:)|Reg\.?\s*(?:No\.?|#|:))\s*[:：]?\s*([A-Z0-9/\-]{4,})',
+        r'(?:UHID|MRN|MRD|IPD\s*(?:No\.?|#|:)|OPD\s*(?:No\.?|#|:)|Reg\.?\s*(?:No\.?|#|:)'
+        r'|पंजीकरण\s*(?:सं\.?|संख्या|क्रमांक)?'
+        r'|आईपीडी\s*(?:सं\.?|संख्या)?'
+        r'|ओपीडी\s*(?:सं\.?|संख्या)?'
+        r'|यूएचआईडी)\s*[:：]?\s*([A-Z0-9/\-]{4,})',
         re.IGNORECASE,
     )
-    for m in uhid_re.finditer(text):
+    for m in uhid_re.finditer(text_digits):
         mrn_val = normalize_mrn(m.group(1))
         if any(c.isdigit() for c in mrn_val):
             ev.mrns.append(mrn_val)
 
     return ev
+
+
+# ---------------------------------------------------------------------------
+# DOB normalization helper
+# ---------------------------------------------------------------------------
+
+def _normalize_dob(dob: str) -> str:
+    """Normalize DOB string to yyyy-mm-dd for comparison."""
+    dob = dob.strip()
+    if not dob:
+        return ''
+    # Already ISO
+    m = re.match(r'^(\d{4})-(\d{2})-(\d{2})', dob)
+    if m:
+        return f"{m.group(1)}-{m.group(2)}-{m.group(3)}"
+    # DD/MM/YYYY or DD-MM-YYYY
+    m = re.match(r'^(\d{1,2})[/\-](\d{1,2})[/\-](\d{4})', dob)
+    if m:
+        d, mo, y = m.group(1), m.group(2), m.group(3)
+        return f"{y}-{int(mo):02d}-{int(d):02d}"
+    # MM/DD/YYYY (US format) — ambiguous, try both
+    return dob
+
+
+# ---------------------------------------------------------------------------
+# Hospital inference from MRN prefix
+# ---------------------------------------------------------------------------
+
+_MRN_HOSPITAL_MAP = {
+    'JJH': 'jeevanjyoti',
+    'SNJ': 'sanjeevani',
+    'DHH': 'dhh',
+    'AH': 'arogya',
+}
+
+def _infer_hospital_from_mrn(mrn: str) -> str:
+    """Infer hospital from MRN prefix (e.g. JJH-0076864 → jeevanjyoti)."""
+    mrn_upper = mrn.strip().upper()
+    for prefix, hospital in _MRN_HOSPITAL_MAP.items():
+        if mrn_upper.startswith(prefix):
+            return hospital
+    return ''
+
+
+def _effective_hospital(rec: 'RecordEvidence') -> str:
+    """Get effective hospital: from path/metadata, or inferred from MRN prefix."""
+    if rec.hospital:
+        return rec.hospital
+    for mrn in rec.mrns:
+        h = _infer_hospital_from_mrn(mrn)
+        if h:
+            return h
+    return ''
 
 
 # ---------------------------------------------------------------------------
@@ -626,14 +706,18 @@ class IdentityResolver:
                         union(indices[0], indices[i])
 
         # MRNs: only merge within same hospital to avoid cross-hospital collisions
+        # Use effective hospital (inferred from MRN prefix if path doesn't tell us)
         for _key, indices in mrn_index.items():
             if len(indices) < 2:
                 continue
             hospital_groups: dict[str, list[int]] = defaultdict(list)
             for idx in indices:
-                h = self._records[idx].hospital or 'unknown'
+                h = _effective_hospital(self._records[idx]) or 'unknown'
                 hospital_groups[h].append(idx)
+            # Also try cross-group merging for 'unknown' records with known hospitals
+            unknown_group = hospital_groups.pop('unknown', [])
             for _h, group in hospital_groups.items():
+                # Merge known-hospital group internally
                 distinct_names = {
                     self._records[i].patient_name_normalized
                     for i in group
@@ -644,27 +728,47 @@ class IdentityResolver:
                 for i in range(1, len(group)):
                     if self._compatible_for_id_merge(self._records[group[0]], self._records[group[i]]):
                         union(group[0], group[i])
+                # Merge unknown-hospital records into this group if compatible
+                for uidx in unknown_group:
+                    if self._compatible_for_id_merge(self._records[group[0]], self._records[uidx]):
+                        union(group[0], uidx)
 
         # Phase 3: Name-based matching with corroboration
-        # Build name index for candidate blocking
+        # Build name index for candidate blocking (multiple strategies)
         name_index: dict[str, list[int]] = defaultdict(list)
         phonetic_index: dict[str, list[int]] = defaultdict(list)
+        phone_last4_index: dict[str, list[int]] = defaultdict(list)
+        relative_index: dict[str, list[int]] = defaultdict(list)
 
         for idx, rec in enumerate(self._records):
             if rec.patient_name_normalized:
                 # Use first token as block key
-                first_token = rec.patient_name_normalized.split()[0] if rec.patient_name_normalized.split() else ''
-                if first_token and len(first_token) > 1:
-                    name_index[first_token].append(idx)
+                tokens = rec.patient_name_normalized.split()
+                if tokens and len(tokens[0]) > 1:
+                    name_index[tokens[0]].append(idx)
+                # Also block on last token (surname)
+                if len(tokens) > 1 and len(tokens[-1]) > 1:
+                    name_index[tokens[-1]].append(idx)
             if rec.patient_name_phonetic:
-                first_phon = rec.patient_name_phonetic.split()[0] if rec.patient_name_phonetic.split() else ''
-                if first_phon and len(first_phon) > 1:
-                    phonetic_index[first_phon].append(idx)
+                phon_tokens = rec.patient_name_phonetic.split()
+                if phon_tokens and len(phon_tokens[0]) > 1:
+                    phonetic_index[phon_tokens[0]].append(idx)
+                if len(phon_tokens) > 1 and len(phon_tokens[-1]) > 1:
+                    phonetic_index[phon_tokens[-1]].append(idx)
+            # Phone last-4 blocking: group records by last 4 digits of phone
+            for phone in rec.phones:
+                if len(phone) >= 4:
+                    phone_last4_index[phone[-4:]].append(idx)
+            # Relative name blocking
+            if rec.relative_name_normalized:
+                rel_tokens = rec.relative_name_normalized.split()
+                if rel_tokens and len(rel_tokens[0]) > 2:
+                    relative_index[rel_tokens[0]].append(idx)
 
         # Try name-based merges with corroboration
         checked_pairs: set[tuple[int, int]] = set()
 
-        for index in [name_index, phonetic_index]:
+        for index in [name_index, phonetic_index, phone_last4_index, relative_index]:
             for _block, indices in index.items():
                 for i, idx_a in enumerate(indices):
                     for idx_b in indices[i + 1:]:
@@ -692,7 +796,7 @@ class IdentityResolver:
         return result
 
     def _compatible_for_id_merge(self, a: RecordEvidence, b: RecordEvidence) -> bool:
-        """Check that two records sharing a strong ID don't have starkly conflicting names."""
+        """Check that two records sharing a strong ID don't have starkly conflicting demographics."""
         if a.patient_name_normalized and b.patient_name_normalized:
             if not self._names_match(a, b):
                 # Allow if one name is just first name or phonetic variant, otherwise reject
@@ -700,6 +804,24 @@ class IdentityResolver:
                 b_toks = set(b.patient_name_normalized.split())
                 if not (a_toks & b_toks):
                     return False
+        # DOB conflict: different DOBs → different patients
+        if a.dob and b.dob:
+            a_norm = _normalize_dob(a.dob)
+            b_norm = _normalize_dob(b.dob)
+            if a_norm and b_norm and a_norm != b_norm:
+                return False
+        # Severe age conflict (>5 years apart) → different patients
+        if a.age is not None and b.age is not None and abs(a.age - b.age) > 5:
+            return False
+        # Relative name conflict: both have relatives but they don't match
+        if (a.relative_name_normalized and b.relative_name_normalized
+                and len(a.relative_name_normalized) > 3 and len(b.relative_name_normalized) > 3
+                and not self._text_similar(a.relative_name_normalized, b.relative_name_normalized)):
+            # Additional guard: if the relative names are completely different, block merge
+            a_rel_toks = set(a.relative_name_normalized.split())
+            b_rel_toks = set(b.relative_name_normalized.split())
+            if not (a_rel_toks & b_rel_toks):
+                return False
         return True
 
     def _should_merge(self, a: RecordEvidence, b: RecordEvidence) -> bool:
@@ -710,6 +832,26 @@ class IdentityResolver:
         """
         # Both must have names
         if not a.patient_name_normalized or not b.patient_name_normalized:
+            return False
+
+        # Hard conflicts: if DOB or age contradict, never merge
+        if a.dob and b.dob:
+            a_norm = _normalize_dob(a.dob)
+            b_norm = _normalize_dob(b.dob)
+            if a_norm and b_norm and a_norm != b_norm:
+                return False
+        if a.age is not None and b.age is not None and abs(a.age - b.age) > 5:
+            return False
+        # Conflicting relative names → block
+        if (a.relative_name_normalized and b.relative_name_normalized
+                and len(a.relative_name_normalized) > 3 and len(b.relative_name_normalized) > 3):
+            a_rel_toks = set(a.relative_name_normalized.split())
+            b_rel_toks = set(b.relative_name_normalized.split())
+            if not (a_rel_toks & b_rel_toks):
+                return False
+        # Conflicting village → block (only if both have village info)
+        if (a.village and b.village
+                and not self._text_similar(a.village, b.village)):
             return False
 
         # Check name similarity
@@ -725,9 +867,12 @@ class IdentityResolver:
                 self._text_similar(a.relative_name_normalized, b.relative_name_normalized)):
             corroboration += 2
 
-        # DOB match
-        if a.dob and b.dob and a.dob == b.dob:
-            corroboration += 2
+        # DOB match (use normalized comparison)
+        if a.dob and b.dob:
+            a_norm = _normalize_dob(a.dob)
+            b_norm = _normalize_dob(b.dob)
+            if a_norm and b_norm and a_norm == b_norm:
+                corroboration += 2
 
         # Village + age match
         if (a.village and b.village and
@@ -751,16 +896,24 @@ class IdentityResolver:
         if a_masked and b_masked and set(a_masked) & set(b_masked):
             corroboration += 1
 
+        # Phone match (may not be in strong index if only one record has it)
+        if a.phones and b.phones and set(a.phones) & set(b.phones):
+            corroboration += 3  # Phone is a strong identifier
+
         # Need at least 2 points of corroboration for name-only links
         # Use higher threshold for common names
         threshold = 2
         a_tokens = set(a.patient_name_normalized.split())
+        b_tokens = set(b.patient_name_normalized.split())
         generic_tokens = {'kumar', 'devi', 'singh', 'kaur', 'lal', 'ram', 'bai', 'bano',
                           'begum', 'bi', 'mohammad', 'md', 'ji', 'sahab', 'prasad', 'yadav',
                           'verma', 'chaudhary', 'chauhan', 'pandey', 'mishra', 'tiwari',
-                          'patel', 'lodhi', 'thakur', 'paswan'}
+                          'patel', 'lodhi', 'thakur', 'paswan', 'nishad', 'rajput',
+                          'ansari', 'siddiqui', 'gupta'}
         # If name is very common (all tokens are generic), require stronger evidence
         if a_tokens and a_tokens.issubset(generic_tokens):
+            threshold = 3
+        if b_tokens and b_tokens.issubset(generic_tokens):
             threshold = 3
         return corroboration >= threshold
 
@@ -778,12 +931,14 @@ class IdentityResolver:
         b_tokens = set(b.patient_name_normalized.split())
         # Remove very common tokens that don't identify
         generic = {'kumar', 'devi', 'singh', 'kaur', 'lal', 'ram', 'bai', 'bano',
-                   'begum', 'bi', 'mohammad', 'md', 'ji', 'sahab', 'prasad'}
+                   'begum', 'bi', 'mohammad', 'md', 'ji', 'sahab', 'prasad',
+                   'sahab', 'amma', 'didi', 'bhaiya', 'behenji'}
         a_meaningful = a_tokens - generic
         b_meaningful = b_tokens - generic
         shared = a_tokens & b_tokens
+        shared_meaningful = a_meaningful & b_meaningful
 
-        if len(shared) >= 2:
+        if len(shared) >= 2 and len(shared_meaningful) >= 1:
             return True
 
         # Phonetic match
@@ -792,12 +947,23 @@ class IdentityResolver:
             return True
 
         # Try fuzzy matching with token overlap
-        if len(shared) >= 1 and len(a_meaningful) >= 1 and len(b_meaningful) >= 1:
+        if len(shared_meaningful) >= 1:
             # At least one meaningful token shared and phonetic similarity
             a_phon_tokens = set(a.patient_name_phonetic.split()) if a.patient_name_phonetic else set()
             b_phon_tokens = set(b.patient_name_phonetic.split()) if b.patient_name_phonetic else set()
             phon_shared = a_phon_tokens & b_phon_tokens
             if len(phon_shared) >= 2:
+                return True
+
+        # rapidfuzz token_sort_ratio for fuzzy matching (spelling variants)
+        if _fuzz is not None and a_meaningful and b_meaningful:
+            score = _fuzz.token_sort_ratio(a.patient_name_normalized, b.patient_name_normalized)
+            if score >= 85:
+                return True
+
+        # One name is a prefix/subset of the other (e.g. "Asha" vs "Asha Rajput")
+        if a_meaningful and b_meaningful:
+            if a_meaningful.issubset(b_meaningful) or b_meaningful.issubset(a_meaningful):
                 return True
 
         return False
@@ -813,6 +979,15 @@ class IdentityResolver:
             overlap = len(a_tokens & b_tokens)
             total = min(len(a_tokens), len(b_tokens))
             if total > 0 and overlap / total >= 0.5:
+                return True
+        # Phonetic key comparison for cross-script
+        a_phon = phonetic_key(a)
+        b_phon = phonetic_key(b)
+        if a_phon and b_phon and a_phon == b_phon:
+            return True
+        # rapidfuzz fallback
+        if _fuzz is not None:
+            if _fuzz.token_sort_ratio(a, b) >= 80:
                 return True
         return False
 

@@ -495,14 +495,13 @@ def _process_json(
     """Process a JSON/FHIR file: detect PII, link records, apply privacy transforms."""
     data = ing.parsed
     out_rel = ing.rel_path
-    is_doc = (
-        not isinstance(data, dict)
-        or ing.fmt == "fhir"
-        or not any(
-            isinstance(v, list) and v and all(isinstance(x, dict) for x in v)
-            for v in data.values()
-        )
+    has_records = (
+        isinstance(data, dict)
+        and ing.fmt != "fhir"
+        and any(k in ('visits', 'results', 'patients') and isinstance(data.get(k), list)
+                for k in ('visits', 'results', 'patients'))
     )
+    is_doc = not has_records
 
     if is_doc:
         record_id = f"sanitized/{out_rel}::doc"
@@ -529,7 +528,7 @@ def _process_json(
     else:
         cleaned = {}
         for k, v in data.items():
-            if isinstance(v, list) and v and all(isinstance(x, dict) for x in v):
+            if k in ('visits', 'results', 'patients') and isinstance(v, list) and v and all(isinstance(x, dict) for x in v):
                 cleaned_list = []
                 pk = json_pointer_escape(k)
                 for idx, item in enumerate(v):
@@ -627,39 +626,44 @@ def run_pipeline(input_dir: Path, output_dir: Path, policy_path: Path | None = N
         ingested_files.append((ing, meta))
         hospital = _detect_hospital(ing.rel_path)
 
+        # Output relative path (handle PII in filename upfront for consistency)
+        out_rel = ing.rel_path
+        if _filename_has_pii(Path(out_rel).name):
+            out_rel = _sanitize_filename(out_rel, ing.input_sha256)
+
         # Extract evidence for identity resolution
         if ing.fmt in ("csv", "tsv"):
             header, body = ing.parsed
             for idx, row in enumerate(body):
-                ev = extract_evidence_csv(header, row, f"sanitized/{ing.rel_path}",
+                ev = extract_evidence_csv(header, row, f"sanitized/{out_rel}",
                                          idx, hospital)
                 resolver.add_record(ev)
 
         elif ing.fmt in ("json", "fhir"):
             data = ing.parsed
-            is_doc = (
-                not isinstance(data, dict)
-                or ing.fmt == "fhir"
-                or not any(
-                    isinstance(v, list) and v and all(isinstance(x, dict) for x in v)
-                    for v in data.values()
-                )
+            has_records = (
+                isinstance(data, dict)
+                and ing.fmt != "fhir"
+                and any(k in ('visits', 'results', 'patients') and isinstance(data.get(k), list)
+                        for k in ('visits', 'results', 'patients'))
             )
+            is_doc = not has_records
             if is_doc:
                 ev = extract_evidence_json(data if isinstance(data, dict) else {},
-                                           f"sanitized/{ing.rel_path}", "doc", hospital)
+                                           f"sanitized/{out_rel}", "doc", hospital)
                 resolver.add_record(ev)
             else:
-                for k, v in data.items():
+                for k in ('visits', 'results', 'patients'):
+                    v = data.get(k)
                     if isinstance(v, list) and v and all(isinstance(x, dict) for x in v):
                         pk = json_pointer_escape(k)
                         for idx, item in enumerate(v):
-                            ev = extract_evidence_json(item, f"sanitized/{ing.rel_path}",
+                            ev = extract_evidence_json(item, f"sanitized/{out_rel}",
                                                        f"/{pk}/{idx}", hospital)
                             resolver.add_record(ev)
 
         else:  # text
-            ev = extract_evidence_text(ing.parsed, f"sanitized/{ing.rel_path}", hospital)
+            ev = extract_evidence_text(ing.parsed, f"sanitized/{out_rel}", hospital)
             resolver.add_record(ev)
 
     # Run identity resolution
