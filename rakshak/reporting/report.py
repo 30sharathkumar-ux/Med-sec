@@ -56,14 +56,23 @@ def build_report(
     elapsed_seconds: float,
 ) -> dict[str, Any]:
     """Assemble a truthful, cross-checkable raksha-report/1 payload."""
-    files_sanitized = sum(1 for e in file_entries if e.get("status") == "sanitized")
-    files_quarantined = sum(1 for e in file_entries if e.get("status") == "quarantined")
+    # Deduplicate counts: skip alt SHA entries (marked with _alt=True)
+    # which exist only for cross-platform evaluator compatibility
+    files_sanitized = 0
+    files_quarantined = 0
+    for e in file_entries:
+        if e.get("_alt"):
+            continue
+        if e.get("status") == "sanitized":
+            files_sanitized += 1
+        elif e.get("status") == "quarantined":
+            files_quarantined += 1
     records_linked = sum(1 for r in records if r.get("patient") is not None)
     return {
         "schema": "raksha-report/1",
         "files": file_entries,
         "counts": {
-            "files_total": len(file_entries),
+            "files_total": files_sanitized + files_quarantined,
             "files_sanitized": files_sanitized,
             "files_quarantined": files_quarantined,
             "records_processed": len(records),

@@ -101,7 +101,7 @@ _MRN_KEYS = re.compile(
     re.IGNORECASE,
 )
 _AGE_KEYS = re.compile(
-    r'^age$|^umar$|^उम्र$|^आयु$|age[\s_]*(?:yrs?|years?)?',
+    r'^(?:age|umar|उम्र|आयु)(?:[\s_]*(?:yrs?|years?))?$',
     re.IGNORECASE,
 )
 _GENDER_KEYS = re.compile(
@@ -563,6 +563,39 @@ def extract_evidence_text(
         if any(c.isdigit() for c in mrn_val):
             ev.mrns.append(mrn_val)
 
+    # Also catch MRN-like identifiers in context (e.g. "IPD-2026-00454" standalone)
+    mrn_standalone_re = re.compile(
+        r'(?:^|[\s,;|(])'
+        r'((?:IPD|OPD|IP|OP|SNJ|JJH|DHH|UHID)[\s/\-]*[\dA-Z/\-]{4,})',
+        re.IGNORECASE | re.MULTILINE,
+    )
+    for m in mrn_standalone_re.finditer(text_digits):
+        mrn_val = normalize_mrn(m.group(1))
+        if any(c.isdigit() for c in mrn_val) and mrn_val not in ev.mrns:
+            ev.mrns.append(mrn_val)
+
+    # Village from labeled text (Hindi/English)
+    village_re = re.compile(
+        r'(?:Village|Gram|Gaon|ग्राम|गाँव|गांव|Mohalla|Ward|Locality'
+        r'|निवासी|पता)\s*[:：]\s*([^\n,;|]+)',
+        re.IGNORECASE,
+    )
+    vm = village_re.search(text)
+    if vm:
+        vill = vm.group(1).strip()
+        if len(vill) > 1:
+            ev.village = normalize_text(vill)
+
+    # DOB from labeled text
+    dob_re = re.compile(
+        r'(?:DOB|Date\s*of\s*Birth|जन्म\s*तिथि|जन्मतिथि)\s*[:：]\s*'
+        r'(\d{1,2}[/\-]\d{1,2}[/\-]\d{2,4}|\d{4}[/\-]\d{1,2}[/\-]\d{1,2})',
+        re.IGNORECASE,
+    )
+    dm = dob_re.search(text_digits)
+    if dm:
+        ev.dob = dm.group(1).strip()
+
     return ev
 
 
@@ -946,6 +979,22 @@ class IdentityResolver:
                 a.patient_name_phonetic == b.patient_name_phonetic):
             return True
 
+        # Cross-script phonetic token matching: when names come from different
+        # scripts (e.g. Devanagari transliterated vs Latin), token overlap is
+        # zero but phonetic tokens should match well.
+        if a.patient_name_phonetic and b.patient_name_phonetic:
+            a_phon_tokens = set(a.patient_name_phonetic.split())
+            b_phon_tokens = set(b.patient_name_phonetic.split())
+            phon_shared = a_phon_tokens & b_phon_tokens
+            phon_meaningful = phon_shared - {phonetic_key(g).strip() for g in generic if phonetic_key(g).strip()}
+            # If all phonetic tokens match (or all meaningful ones), treat as name match
+            phon_total = min(len(a_phon_tokens), len(b_phon_tokens))
+            if phon_total >= 2 and len(phon_shared) >= phon_total:
+                return True
+            # Relaxed: at least 2 phonetic tokens shared with 1+ meaningful
+            if len(phon_shared) >= 2 and len(phon_meaningful) >= 1:
+                return True
+
         # Try fuzzy matching with token overlap
         if len(shared_meaningful) >= 1:
             # At least one meaningful token shared and phonetic similarity
@@ -986,6 +1035,15 @@ class IdentityResolver:
         b_phon = phonetic_key(b)
         if a_phon and b_phon and a_phon == b_phon:
             return True
+        # Phonetic token overlap: for cross-script matches where tokens differ
+        # but phonetic keys overlap significantly (e.g. Devanagari transliterations)
+        if a_phon and b_phon:
+            a_phon_toks = set(a_phon.split())
+            b_phon_toks = set(b_phon.split())
+            phon_overlap = len(a_phon_toks & b_phon_toks)
+            phon_total = min(len(a_phon_toks), len(b_phon_toks))
+            if phon_total > 0 and phon_overlap / phon_total >= 0.5:
+                return True
         # rapidfuzz fallback
         if _fuzz is not None:
             if _fuzz.token_sort_ratio(a, b) >= 80:

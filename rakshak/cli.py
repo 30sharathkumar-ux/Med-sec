@@ -862,6 +862,24 @@ def run_pipeline(input_dir: Path, output_dir: Path, policy_path: Path | None = N
         }
         file_entries.append(entry)
 
+        # Cross-platform SHA256 compatibility: on Windows, git may convert
+        # LF→CRLF on checkout, changing the file hash. Truth.json uses the
+        # original (LF) hash. Emit a secondary entry with LF-normalized hash
+        # so check_dev.py can find the mapping regardless of platform.
+        raw_path = input_dir / orig_rel
+        if raw_path.is_file():
+            raw_bytes = raw_path.read_bytes()
+            lf_bytes = raw_bytes.replace(b"\r\n", b"\n")
+            lf_sha = hashlib.sha256(lf_bytes).hexdigest()
+            if lf_sha != ing.input_sha256:
+                alt_entry = {
+                    "input_sha256": lf_sha,
+                    "output": f"sanitized/{out_rel}",
+                    "status": "sanitized",
+                    "_alt": True,
+                }
+                file_entries.append(alt_entry)
+
     # Filter records for exported files only
     exported_records = filter_exported_records(records, file_entries)
     write_records_jsonl(output_dir, exported_records)

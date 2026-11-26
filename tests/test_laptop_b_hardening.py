@@ -48,7 +48,10 @@ class Phase1ReportAccountingTests(unittest.TestCase):
 
             self.assertEqual(rc, 0)
             report = json.loads((out / "report.json").read_text(encoding="utf-8"))
-            self.assertEqual(len(report["files"]), 2)
+            # Primary entries: one per input file; alt SHA entries may exist
+            # for cross-platform compatibility but are marked with _alt=True
+            primary_entries = [e for e in report["files"] if not e.get("_alt")]
+            self.assertEqual(len(primary_entries), 2)
             self.assertEqual(report["counts"]["files_total"], 2)
             self.assertEqual(report["counts"]["files_sanitized"], 1)
             self.assertEqual(report["counts"]["files_quarantined"], 1)

@@ -42,6 +42,17 @@ _DEVA_CONSONANTS = {
     '\u095C': 'dh', '\u095D': 'rh', '\u095E': 'f', '\u095F': 'y',
 }
 
+_DEVA_NUKTA_CONSONANTS = {
+    '\u0915': 'q',   # क़ -> q
+    '\u0916': 'kh',  # ख़ -> kh
+    '\u0917': 'gh',  # ग़ -> gh
+    '\u091C': 'z',   # ज़ -> z
+    '\u0921': 'dh',  # ड़ -> dh
+    '\u0922': 'rh',  # ढ -> rh
+    '\u092B': 'f',   # फ़ -> f
+    '\u092F': 'y',   # य़ -> y
+}
+
 _DEVA_DIGITS = {
     '\u0966': '0', '\u0967': '1', '\u0968': '2', '\u0969': '3', '\u096A': '4',
     '\u096B': '5', '\u096C': '6', '\u096D': '7', '\u096E': '8', '\u096F': '9',
@@ -99,6 +110,7 @@ def transliterate_devanagari(text: str) -> str:
             i += 1
             # Check for nukta modifying this consonant
             if i < n and text[i] == NUKTA:
+                cons = _DEVA_NUKTA_CONSONANTS.get(ch, cons)
                 i += 1
             # Check for virama (halant) → conjunct
             if i < n and text[i] == VIRAMA:
@@ -210,7 +222,7 @@ def phonetic_key(name: str) -> str:
             keys.append(token)
             continue
         # Keep first char, drop vowels from rest
-        first = token[0]
+        first = token[0].replace('w', 'v').replace('q', 'k')
         rest = re.sub(r'[aeiou]', '', token[1:])
         # Normalize common alternations
         rest = rest.replace('ph', 'f')
@@ -222,6 +234,8 @@ def phonetic_key(name: str) -> str:
         rest = rest.replace('chh', 'ch')
         rest = rest.replace('jh', 'j')
         rest = rest.replace('sh', 's')
+        rest = rest.replace('w', 'v')
+        rest = rest.replace('q', 'k')
         # Collapse doubles
         collapsed = []
         for ch in first + rest:
