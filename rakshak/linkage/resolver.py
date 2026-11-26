@@ -961,8 +961,9 @@ class IdentityResolver:
             if score >= 85:
                 return True
 
-        # One name is a prefix/subset of the other (e.g. "Asha" vs "Asha Rajput")
-        if a_meaningful and b_meaningful:
+        # One name is a prefix/subset of the other (e.g. "Asha Rajput" vs "Asha Devi Rajput")
+        # Require at least 2 meaningful tokens on each side to avoid "Asha" ⊂ "Asha Rajput" false links
+        if a_meaningful and b_meaningful and len(a_meaningful) >= 2 and len(b_meaningful) >= 2:
             if a_meaningful.issubset(b_meaningful) or b_meaningful.issubset(a_meaningful):
                 return True
 
