@@ -65,6 +65,7 @@ LATIN_NAME_TOKENS = frozenset({
     "vishnu", "vivek", "wangmo", "waseem", "yadav", "yash", "yashwant", "yogesh",
     "yusuf", "zafar", "zahid", "zainab", "zakir", "zeenat", "zenab", "zorawar", "zubair",
     "baig", "bhattacharya", "ilavenil", "rajput", "kashyap",
+    "jaspreet", "parvati",
 })
 
 DEVA_NAME_TOKENS = frozenset({
@@ -81,6 +82,7 @@ DEVA_NAME_TOKENS = frozenset({
     "शबाना", "शर्मा", "शांति", "शाहिद", "श्याम", "श्रीवास्तव", "सलमा", "सलीम", "संजय",
     "संदीप", "सरिता", "सिद्दीकी", "सिंह", "सुखविंदर", "सुनीता", "सुनील", "सुमन", "सुरेश",
     "हरीश", "हरप्रीत", "यूसुफ",
+    "जसप्रीत", "पार्वती",
 })
 
 NON_NAME_STOPWORDS = frozenset({
@@ -111,6 +113,9 @@ NON_NAME_STOPWORDS = frozenset({
     "मरीज़", "मरीज", "नाम", "आयु", "वर्ष", "महिला", "पुरुष", "पिता", "पति", "पता", "ग्राम",
     "तहसील", "जिला", "मोहल्ला", "मकान", "मोबाइल", "निदान", "बुखार", "दिन", "दर्द", "पेट",
     "चक्कर", "दवा", "सारांश", "पर्चा", "छुट्टी", "भर्ती", "तारीख", "अस्पताल", "जांच",
+    # Hinglish kinship terms (not surnames)
+    "papa", "mama", "chacha", "chachu", "masi", "mausi", "mami", "nana", "nani",
+    "dada", "dadi", "bua", "phuphi", "fufa", "tau", "taiji", "bhabhi", "amma",
 })
 
 # Context patterns capturing names even when completely unseen (canaries, chaos round)
@@ -139,10 +144,17 @@ _LABELED_NAME_PATTERNS: list[tuple[str, re.Pattern[str]]] = [
         ),
     ),
     # Relation markers S/o, D/o, W/o, C/O (only if not protected clinical C/O complaint)
+    # For C/O: use negative lookbehind to skip K/C/O, N/K/C/O contexts
     (
         "RELATIVE_NAME",
         re.compile(
-            r"(?i)\b(?:S/o|D/o|W/o|C/O)\s*[:\-]?\s*([A-Z\u0900-\u097f][^\n,;|()।]{1,45}?)(?=\s*(?:,|;|\)|H\.?No|House|Makan|Ward|Vill|Gram|Tehsil|Distt|मकान|मोहल्ला|तहसील|जिला|PIN|Mob|\n|$))"
+            r"(?i)\b(?:S/o|D/o|W/o)\s*[:\-]?\s*([A-Z\u0900-\u097f][^\n,;|()।]{1,45}?)(?=\s*(?:,|;|\)|H\.?No|House|Makan|Ward|Vill|Gram|Tehsil|Distt|मकान|मोहल्ला|तहसील|जिला|PIN|Mob|\n|$))"
+        ),
+    ),
+    (
+        "RELATIVE_NAME",
+        re.compile(
+            r"(?i)(?<![A-Za-z/])C/O\s*[:\-]?\s*([A-Z\u0900-\u097f][^\n,;|()।]{1,45}?)(?=\s*(?:,|;|\)|H\.?No|House|Makan|Ward|Vill|Gram|Tehsil|Distt|मकान|मोहल्ला|तहसील|जिला|PIN|Mob|\n|$))"
         ),
     ),
     # Honorific suffixes (e.g., "Asha ji", "Shahid sahab", "Zainab behenji", "Jaspreet bhai")
@@ -150,7 +162,7 @@ _LABELED_NAME_PATTERNS: list[tuple[str, re.Pattern[str]]] = [
         "PATIENT_NAME",
         re.compile(
             r"(?i)\b([A-Z\u0900-\u097f][\w.\u0900-\u097f-]+(?:\s+[A-Z\u0900-\u097f][\w.\u0900-\u097f-]+)?)\s+"
-            r"(?:ji|sahab|saheb|behenji|bhai|bhaiya|didi|babu|जी|साहब|बहनजी)\b"
+            r"(?:ji|sahab|saheb|behenji|bhai|bhaiya|didi|babu|amma|जी|साहब|बहनजी|अम्मा)\b"
         ),
     ),
     # Hindi honorific prefixes
@@ -205,6 +217,15 @@ _LABELED_NAME_PATTERNS: list[tuple[str, re.Pattern[str]]] = [
         "PATIENT_NAME",
         re.compile(
             r"(?i)\d{1,2}:\d{2}\s*[-–]\s*([A-Z][a-zA-Z.'-]+(?:\s+[A-Z][a-zA-Z.'-]+){1,2})\s*[-–]"
+        ),
+    ),
+    # Hinglish kinship relative patterns: "Jagdish Chachu", "Umesh Mama", "Raju Papa"
+    (
+        "RELATIVE_NAME",
+        re.compile(
+            r"(?i)\b([A-Z\u0900-\u097f][\w.\u0900-\u097f-]+(?:\s+[A-Z\u0900-\u097f][\w.\u0900-\u097f-]+)?)\s+"
+            r"(?:Papa|Mama|Chacha|Chachu|Masi|Mausi|Mami|Nana|Nani|Dada|Dadi|Bua|Phuphi|Fufa|Tau|Taiji|Bhabhi|Amma|"
+            r"पापा|मामा|चाचा|चाचू|मासी|मौसी|नाना|नानी|दादा|दादी|बुआ|फूफा|ताऊ|ताई|भाभी|अम्मा)\b"
         ),
     ),
 ]

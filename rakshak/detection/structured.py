@@ -7,15 +7,17 @@ import re
 from rakshak.detection.multilingual import normalize_surface
 
 # Semantic categories for structured CSV/TSV columns and JSON object keys
+# NOTE: "value" and "display" are intentionally EXCLUDED — they need context-aware
+# classification (FHIR identifier.value = MRN, telecom.value = phone, etc.)
 CLINICAL_KEEP_FIELDS = frozenset({
     "doctor", "ref_doctor", "referred_by", "consultant", "author", "reviewed_by",
     "drug", "medicine", "strength", "form", "category", "schedule", "dosage", "frequency", "duration",
-    "test", "loinc", "value", "unit", "range", "ref_range", "reference_range", "result",
-    "diagnosis", "code", "display", "complaints", "history", "procedure", "package_code",
+    "test", "loinc", "unit", "range", "ref_range", "reference_range", "result",
+    "diagnosis", "code", "complaints", "history", "procedure", "package_code",
     "vitals", "bp", "pulse", "temp_f", "temp", "spo2", "weight_kg", "weight",
     "department", "ward", "wards", "beds", "occupied", "dengue_cases", "week",
-    "amount_inr", "status", "schema", "facility", "report_type", "lab", "panels", "results",
-    "visits", "rx", "tickets", "system", "resourceType", "clinicalStatus", "valueQuantity",
+    "amount_inr", "status", "schema", "facility", "report_type", "lab", "panels",
+    "rx", "system", "resourceType", "clinicalStatus", "valueQuantity",
     "medicationCodeableConcept", "dosageInstruction", "component", "qualification", "class",
     "intent", "section", "title", "contentType", "language", "trip", "from", "to",
 })
@@ -47,6 +49,40 @@ def classify_field(key: str, parent_key: str = "") -> str | None:
     if not nk:
         return None
 
+    # ----- FHIR "value" context-aware classification -----
+    # value under identifier/telecom/coding parents needs special handling
+    if nk == "value":
+        if np in ("identifier",):
+            return None  # identifier.value = MRN/ABHA — let text cleaner handle
+        if np in ("telecom",):
+            return "PHONE"  # telecom.value = phone number string
+        if np in ("coding", "type", "category", "code", "clinicalstatus",
+                   "valuequantity", "component", "dosageinstruction",
+                   "medicationcodeableconcept", "quantity", "doseandrate"):
+            return "CLINICAL_KEEP"
+        # CSV column named "value" with no FHIR parent — treat as clinical lab result
+        if not np:
+            return "CLINICAL_KEEP"
+        # Default: let text cleaner run
+        return None
+
+    # ----- FHIR "display" context-aware classification -----
+    if nk == "display":
+        if np in ("subject", "patient", "beneficiary", "individual"):
+            return "PATIENT_NAME"
+        if np in ("author", "performer", "recorder", "asserter", "practitioner",
+                   "requester", "managingorganization", "organization", "source",
+                   "serviceprovider"):
+            return "CLINICAL_KEEP"
+        if np in ("relationship", "contact"):
+            return "RELATIVE_NAME"
+        # coding.display, type.display, clinicalStatus.display etc. → clinical
+        if np in ("coding", "type", "category", "code", "clinicalstatus",
+                   "class", "priority", "use", "maritalstatus"):
+            return "CLINICAL_KEEP"
+        # Default display: let text cleaner handle
+        return None
+
     # Explicit clinical protection checks first
     if any(w in nk for w in ("doctor", "consultant", "referred by", "ref doctor", "author", "physician", "reviewed by")):
         return "CLINICAL_KEEP"
@@ -64,7 +100,9 @@ def classify_field(key: str, parent_key: str = "") -> str | None:
     # Guardian / relative fields
     if np in ("guardian", "contact", "attendant") and nk == "name":
         return "RELATIVE_NAME"
-    if any(w in nk for w in ("relative", "guardian", "father", "husband", "mother", "spouse", "attendant", "pita", "pati", "पिता", "पति")):
+    # Use word-boundary check to prevent "pati" matching "patient"
+    _nk_words = set(nk.split())
+    if _nk_words & {"relative", "guardian", "father", "husband", "mother", "spouse", "attendant", "pita", "pati", "पिता", "पति"}:
         return "RELATIVE_NAME"
     if nk == "relation":
         return "RELATION_LABEL"
@@ -85,13 +123,17 @@ def classify_field(key: str, parent_key: str = "") -> str | None:
     if any(w in nk for w in ("uhid", "mrn", "reg no", "patientid", "patient id", "patient ref", "ipd", "पंजीकरण", "आईपीडी")):
         return "MRN"
 
-    # Names
+    # Names — protect hospital/facility name fields
     if np == "name" and nk in ("first", "last", "local", "text", "given", "family"):
         return "PATIENT_NAME"
     if nk in ("patient name", "patient s name", "pt name", "name", "naam", "नाम", "मरीज़ का नाम", "मरीज का नाम", "first name", "firstname", "last name", "lastname", "beneficiary", "name of beneficiary"):
-        if np in ("facility", "organization", "lab", "hospital", "panels"):
+        if np in ("facility", "organization", "lab", "hospital", "panels",
+                  "practitioner", "location", "careteam", "healthcareservice",
+                  "export meta", "export_meta"):
             return "CLINICAL_KEEP"
         return "PATIENT_NAME"
+    if nk == "hospital":
+        return "CLINICAL_KEEP"
     if "patient" in nk and "name" in nk:
         return "PATIENT_NAME"
     if np == "raised by" and nk == "name":
