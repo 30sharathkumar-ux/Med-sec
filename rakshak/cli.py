@@ -438,37 +438,22 @@ def _clean_json_value(value: Any, entity_counts: Counter,
 # ---------------------------------------------------------------------------
 
 def _filename_has_pii(filename: str) -> bool:
-    """Check if a filename contains PII (phone numbers, names, etc.)."""
-    # Phone numbers in filenames
-    if re.search(r'[6-9]\d{9}', filename):
+    """Check if a filename contains PII patterns not caught by the general detector."""
+    if (
+        re.search(r'[6-9]\d{9}', filename)
+        or re.search(r'\d{12}', filename)
+        or re.search(r'[A-Z][a-z]+_[A-Z][a-z]+', filename)
+        or re.search(r'UHID[-_]?\d+', filename, re.IGNORECASE)
+    ):
         return True
-    # Aadhaar-like patterns
-    if re.search(r'\d{12}', filename):
-        return True
-    # Names with underscores (e.g. Anita_Sharma)
-    if re.search(r'[A-Z][a-z]+_[A-Z][a-z]+', filename):
-        return True
-    # Devanagari in filenames
-    if any('\u0900' <= ch <= '\u097F' for ch in filename):
-        return True
-    # UHID patterns
-    if re.search(r'UHID[-_]?\d+', filename, re.IGNORECASE):
-        return True
-    return False
+    return any('\u0900' <= ch <= '\u097F' for ch in filename)
 
 
 def _sanitize_filename(rel_path: str, sha256: str) -> str:
-    """Generate a sanitized filename using HMAC when the original contains PII."""
     parts = rel_path.split('/')
     filename = parts[-1]
-    ext = ''
-    if '.' in filename:
-        name_part, ext = filename.rsplit('.', 1)
-        ext = '.' + ext
-
-    # Use first 8 chars of sha256 as safe replacement
-    safe_name = f"file_{sha256[:8]}{ext}"
-    parts[-1] = safe_name
+    ext = f".{filename.rsplit('.', 1)[1]}" if '.' in filename else ''
+    parts[-1] = f"file_{sha256[:8]}{ext}"
     return '/'.join(parts)
 
 
@@ -712,14 +697,11 @@ def run_pipeline(input_dir: Path, output_dir: Path, policy_path: Path | None = N
         ingested_files.append((ing, meta))
         hospital = _detect_hospital(ing.rel_path)
 
-        # Use original rel_path in Pass 1 so Pass 2's orig_rel lookup matches
-        out_rel = ing.rel_path
-
         # Extract evidence for identity resolution
         if ing.fmt in ("csv", "tsv"):
             header, body = ing.parsed
             for idx, row in enumerate(body):
-                ev = extract_evidence_csv(header, row, f"sanitized/{out_rel}",
+                ev = extract_evidence_csv(header, row, f"sanitized/{ing.rel_path}",
                                          idx, hospital)
                 resolver.add_record(ev)
 
@@ -734,7 +716,7 @@ def run_pipeline(input_dir: Path, output_dir: Path, policy_path: Path | None = N
             is_doc = not has_records
             if is_doc:
                 ev = extract_evidence_json(data if isinstance(data, dict) else {},
-                                           f"sanitized/{out_rel}", "doc", hospital)
+                                           f"sanitized/{ing.rel_path}", "doc", hospital)
                 resolver.add_record(ev)
             else:
                 for k in ('visits', 'results', 'patients'):
@@ -742,12 +724,12 @@ def run_pipeline(input_dir: Path, output_dir: Path, policy_path: Path | None = N
                     if isinstance(v, list) and v and all(isinstance(x, dict) for x in v):
                         pk = json_pointer_escape(k)
                         for idx, item in enumerate(v):
-                            ev = extract_evidence_json(item, f"sanitized/{out_rel}",
+                            ev = extract_evidence_json(item, f"sanitized/{ing.rel_path}",
                                                        f"/{pk}/{idx}", hospital)
                             resolver.add_record(ev)
 
         else:  # text
-            ev = extract_evidence_text(ing.parsed, f"sanitized/{out_rel}", hospital)
+            ev = extract_evidence_text(ing.parsed, f"sanitized/{ing.rel_path}", hospital)
             resolver.add_record(ev)
 
     # Run identity resolution
@@ -766,6 +748,8 @@ def run_pipeline(input_dir: Path, output_dir: Path, policy_path: Path | None = N
         # Handle PII in filenames using Laptop B's sanitize_filename
         orig_rel = ing.rel_path
         out_rel = sanitize_filename(orig_rel, secret)
+        if out_rel == orig_rel and _filename_has_pii(Path(orig_rel).name):
+            out_rel = _sanitize_filename(orig_rel, ing.input_sha256)
         renamed = out_rel != orig_rel
         if renamed:
             entity_counts['FILENAME_PII'] += 1
