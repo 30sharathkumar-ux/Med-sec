@@ -9,5 +9,6 @@ build/
 out/
 my_output/
 output/
+.raksha_ui_runs/
 .DS_Store
 Thumbs.db

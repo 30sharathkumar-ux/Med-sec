@@ -257,7 +257,10 @@
     const verified = Boolean(a.verified);
     const piiRemaining = verified ? `${a.pii_leaked} / ${a.pii_total} (${a.leakage_pct}%)` : "Not yet evaluated";
     const medPres = verified ? `${a.medical_pct}% (${a.medical_kept}/${a.medical_total})` : "Not yet evaluated";
-    const rssVal = ov.resources && ov.resources.peak_rss_mb > 0 ? `${ov.resources.peak_rss_mb} MB` : "Not yet evaluated";
+    const rawRss = ov.resources ? ov.resources.peak_rss_mb : null;
+    const rssVal = (typeof rawRss === "number" && rawRss > 0)
+      ? `${rawRss} MB`
+      : (rawRss === 0 ? "Unavailable on this platform" : "Not measured");
 
     const entEntries = Object.entries(ov.entities || {}).sort((x, y) => y[1] - x[1]).slice(0, 8);
     const maxEnt = Math.max(1, ...entEntries.map((x) => x[1]));

@@ -46,6 +46,7 @@ TRUTH_PATH = ROOT_DIR / "dev" / "truth" / "truth.json"
 RUNS_BASE_DIR = ROOT_DIR / ".raksha_ui_runs"
 DATASETS_DIR = RUNS_BASE_DIR / "datasets"
 RUNS_OUTPUT_DIR = RUNS_BASE_DIR / "runs"
+REGISTRY_PATH = RUNS_BASE_DIR / "registry.json"
 
 MAX_UPLOAD_FILE_BYTES = 52_428_800  # 50 MiB
 
@@ -54,6 +55,7 @@ _DATASETS: dict[str, dict[str, Any]] = {}
 _RUNS: dict[str, dict[str, Any]] = {}
 _ACTIVE_DATASET_ID: str = "practice"
 _ACTIVE_RUN_ID: str | None = None
+_REGISTRY_LOADED: bool = False
 
 
 def _utc_now() -> str:
@@ -112,10 +114,129 @@ def _system_info() -> dict[str, Any]:
     }
 
 
+def _encode_rel(path: Path) -> str:
+    """Encode path relative to ROOT_DIR when possible for portable persistence."""
+    try:
+        return path.resolve().relative_to(ROOT_DIR.resolve()).as_posix()
+    except ValueError:
+        return str(path)
+
+
+def _decode_rel(raw: str) -> Path:
+    p = Path(raw)
+    return p if p.is_absolute() else (ROOT_DIR / p)
+
+
+def _save_registry_locked() -> None:
+    """Persist safe dataset/run metadata locally (no raw PII, no secrets)."""
+    try:
+        RUNS_BASE_DIR.mkdir(parents=True, exist_ok=True)
+        payload = {
+            "active_dataset_id": _ACTIVE_DATASET_ID,
+            "active_run_id": _ACTIVE_RUN_ID,
+            "datasets": [
+                {
+                    "id": d["id"],
+                    "name": d["name"],
+                    "kind": d["kind"],
+                    "path": _encode_rel(d["path"]),
+                    "created_at": d["created_at"],
+                }
+                for d in _DATASETS.values()
+                if d.get("id") != "practice"
+            ],
+            "runs": [
+                {
+                    "run_id": r["run_id"],
+                    "dataset_id": r["dataset_id"],
+                    "dataset_name": r["dataset_name"],
+                    "status": r["status"],
+                    "start_time": r["start_time"],
+                    "end_time": r["end_time"],
+                    "elapsed_seconds": r["elapsed_seconds"],
+                    "input_dir": _encode_rel(r["input_dir"]),
+                    "output_dir": _encode_rel(r["output_dir"]),
+                    "contract": r.get("contract"),
+                    "logs": list(r.get("logs") or [])[-50:],
+                    "error": r.get("error"),
+                }
+                for r in _RUNS.values()
+                if r.get("run_id") != "practice-baseline"
+            ],
+        }
+        tmp = REGISTRY_PATH.with_suffix(".tmp")
+        tmp.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+        tmp.replace(REGISTRY_PATH)
+    except OSError:
+        pass
+
+
+def _load_registry_locked() -> None:
+    """Load persisted dataset/run metadata on startup if available."""
+    global _ACTIVE_DATASET_ID, _ACTIVE_RUN_ID, _REGISTRY_LOADED
+    if _REGISTRY_LOADED:
+        return
+    _REGISTRY_LOADED = True
+    data = _read_json_safe(REGISTRY_PATH)
+    if not isinstance(data, dict):
+        return
+
+    for d in data.get("datasets") or []:
+        if not isinstance(d, dict) or not d.get("id") or not d.get("path"):
+            continue
+        p = _decode_rel(str(d["path"]))
+        if p.is_dir():
+            _DATASETS[d["id"]] = {
+                "id": d["id"],
+                "name": str(d.get("name") or d["id"]),
+                "kind": str(d.get("kind") or "uploaded"),
+                "path": p,
+                "created_at": str(d.get("created_at") or _utc_now()),
+                "inspection_cache": None,
+            }
+
+    for r in data.get("runs") or []:
+        if not isinstance(r, dict) or not r.get("run_id") or not r.get("output_dir"):
+            continue
+        in_dir = _decode_rel(str(r.get("input_dir") or ""))
+        out_dir = _decode_rel(str(r["output_dir"]))
+        if not out_dir.is_dir():
+            continue
+        status = str(r.get("status") or "failed")
+        err = r.get("error")
+        if status == "processing":
+            status = "failed"
+            err = err or "Server restarted during execution."
+        _RUNS[r["run_id"]] = {
+            "run_id": r["run_id"],
+            "dataset_id": str(r.get("dataset_id") or "practice"),
+            "dataset_name": str(r.get("dataset_name") or ""),
+            "status": status,
+            "start_time": str(r.get("start_time") or _utc_now()),
+            "end_time": r.get("end_time"),
+            "elapsed_seconds": float(r.get("elapsed_seconds") or 0.0),
+            "input_dir": in_dir,
+            "output_dir": out_dir,
+            "contract": r.get("contract"),
+            "assurance_cache": None,
+            "logs": list(r.get("logs") or []),
+            "error": err,
+            "cancel_requested": False,
+        }
+
+    saved_ds = data.get("active_dataset_id")
+    if isinstance(saved_ds, str) and saved_ds in _DATASETS:
+        _ACTIVE_DATASET_ID = saved_ds
+    saved_run = data.get("active_run_id")
+    if isinstance(saved_run, str) and saved_run in _RUNS:
+        _ACTIVE_RUN_ID = saved_run
+
+
 def _init_registry() -> None:
     """Initialize practice dataset & baseline run if output exists."""
     global _ACTIVE_RUN_ID
     with _LOCK:
+        _load_registry_locked()
         if "practice" not in _DATASETS and PRACTICE_INPUT_DIR.is_dir():
             _DATASETS["practice"] = {
                 "id": "practice",
@@ -147,7 +268,8 @@ def _init_registry() -> None:
                 "error": None,
                 "cancel_requested": False,
             }
-            _ACTIVE_RUN_ID = "practice-baseline"
+            if _ACTIVE_RUN_ID is None and _ACTIVE_DATASET_ID == "practice":
+                _ACTIVE_RUN_ID = "practice-baseline"
 
 
 def _run_contract_check(input_dir: Path, output_dir: Path) -> dict[str, Any]:
@@ -830,6 +952,7 @@ def _start_run_for_dataset(dataset_id: str) -> dict[str, Any] | None:
         }
         _RUNS[run_id] = run_obj
         _ACTIVE_RUN_ID = run_id
+        _save_registry_locked()
 
     def _worker() -> None:
         if not os.environ.get("RAKSHA_SECRET"):
@@ -843,6 +966,7 @@ def _start_run_for_dataset(dataset_id: str) -> dict[str, Any] | None:
                     run_obj["end_time"] = _utc_now()
                     run_obj["elapsed_seconds"] = elapsed
                     run_obj["logs"].append("Run cancelled by operator.")
+                    _save_registry_locked()
                     return
             if rc != 0:
                 with _LOCK:
@@ -851,6 +975,7 @@ def _start_run_for_dataset(dataset_id: str) -> dict[str, Any] | None:
                     run_obj["elapsed_seconds"] = elapsed
                     run_obj["error"] = "Pipeline exited with non-zero status."
                     run_obj["logs"].append("Pipeline failed during execution.")
+                    _save_registry_locked()
                 return
 
             contract = _run_contract_check(ds["path"], out_dir)
@@ -860,6 +985,7 @@ def _start_run_for_dataset(dataset_id: str) -> dict[str, Any] | None:
                 run_obj["end_time"] = _utc_now()
                 run_obj["elapsed_seconds"] = elapsed
                 run_obj["logs"].append(f"Pipeline completed in {elapsed}s ({contract.get('status')}).")
+                _save_registry_locked()
         except Exception:
             with _LOCK:
                 run_obj["status"] = "failed"
@@ -867,6 +993,7 @@ def _start_run_for_dataset(dataset_id: str) -> dict[str, Any] | None:
                 run_obj["elapsed_seconds"] = round(time.monotonic() - run_obj["_t0"], 2)
                 run_obj["error"] = "Unexpected local pipeline execution error."
                 run_obj["logs"].append("Pipeline aborted due to an internal error.")
+                _save_registry_locked()
 
     threading.Thread(target=_worker, daemon=True).start()
     return _run_summary(run_obj)
@@ -1004,6 +1131,7 @@ class RakshaHandler(BaseHTTPRequestHandler):
                 matching = [r for r in _RUNS.values() if r["dataset_id"] == ds_id and r["status"] == "completed"]
                 matching.sort(key=lambda x: x["start_time"], reverse=True)
                 _ACTIVE_RUN_ID = matching[0]["run_id"] if matching else None
+                _save_registry_locked()
             return self._send_json({"ok": True, "active_dataset_id": ds_id, "active_run_id": _ACTIVE_RUN_ID})
 
         if parsed.path == "/api/runs/start":
@@ -1020,6 +1148,7 @@ class RakshaHandler(BaseHTTPRequestHandler):
                     return self._send_json({"error": "Run not found"}, status=404)
                 _ACTIVE_RUN_ID = rid
                 _ACTIVE_DATASET_ID = _RUNS[rid]["dataset_id"]
+                _save_registry_locked()
             return self._send_json({"ok": True, "active_run_id": rid})
 
         if parsed.path == "/api/runs/cancel":
@@ -1097,6 +1226,7 @@ class RakshaHandler(BaseHTTPRequestHandler):
             }
             _ACTIVE_DATASET_ID = ds_id
             _ACTIVE_RUN_ID = None
+            _save_registry_locked()
 
         inv = _inspect_dataset(ds_id)
         return self._send_json({"ok": True, "dataset_id": ds_id, "inspection": inv})
