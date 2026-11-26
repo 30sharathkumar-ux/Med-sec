@@ -78,10 +78,11 @@ def _has_deva_name_token(text: str, extra_names: set[str] | None = None) -> bool
             continue
         if tok in DEVA_NAME_TOKENS:
             return True
-        if extra_keys:
-            canon = canonical_latin_name(tok)
-            if canon and phonetic_token_key(canon) in extra_keys:
-                return True
+        canon = canonical_latin_name(tok)
+        if canon and len(canon) >= 3 and canon not in NON_NAME_STOPWORDS and canon in LATIN_NAME_TOKENS:
+            return True
+        if extra_keys and canon and phonetic_token_key(canon) in extra_keys:
+            return True
     return False
 
 

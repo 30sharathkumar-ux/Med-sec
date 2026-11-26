@@ -28,14 +28,18 @@ _PHONE_RE = re.compile(
 _EMAIL_RE = re.compile(r"[\w.+-]+@[\w-]+(?:\.[\w.-]+)+")
 _PAN_RE = re.compile(r"\b[A-Z]{5}\d{4}[A-Z]\b")
 _INSURANCE_RE = re.compile(
-    r"\b(?:PMJAY[-/][A-Z]{2}[-/]\d{6,14}|POL/\d{2}/\d{5,12}|TPA[-/][A-Z0-9-]{4,16})\b",
+    r"\b(?:"
+    r"(?:AB[-/])?PMJAY[-/][A-Z0-9-]{4,18}|"
+    r"POL/\d{2}/\d{5,12}|"
+    r"(?:TPA|CGHS|ECHS|ESIC|ESI|STAR[-/]?HLT)[-/][A-Z0-9/-]{4,18}"
+    r")\b",
     re.IGNORECASE,
 )
 # General Indian Hospital MRN / UHID / IPD / Reg No patterns (avoids dates DD/MM/YYYY, BP, ICD codes)
 _MRN_RE = re.compile(
     r"\b(?:"
     r"(?:SNJ|JJH|DHH|UHID|IPD|IP|ADM|MRN|REG|OPD|BL)[-/]?(?:\d{2,4}[-/])+\d{3,10}|"
-    r"[A-Z]{2,5}[-/]\d{2,4}[-/]\d{4,8}|"
+    r"[A-Z]{2,6}(?:[-/][A-Z]{2,5})?[-/](?:\d{2,4}[-/])?\d{4,10}|"
     r"(?:UHID|ADM|DHH\d{4}|SNJ|JJH|MRN)[-/]?\d{5,10}|"
     r"[A-Z]{2,5}-IPD-\d{4,10}"
     r")\b",
