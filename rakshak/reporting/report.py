@@ -18,8 +18,18 @@ def peak_rss_mb() -> float:
     except Exception:  # noqa: BLE001 - Windows has no resource module
         pass
     if sys.platform == "win32":
+        # Try psutil first (most reliable on Windows)
+        try:
+            import os as _os
+            import psutil
+            mi = psutil.Process(_os.getpid()).memory_info()
+            return round(getattr(mi, "peak_wset", mi.rss) / (1024.0 * 1024.0), 1)
+        except Exception:  # noqa: BLE001
+            pass
+        # Fallback: ctypes with OpenProcess for proper handle access
         try:
             import ctypes
+            import os as _os
             from ctypes import wintypes
 
             class PROCESS_MEMORY_COUNTERS(ctypes.Structure):
@@ -38,9 +48,21 @@ def peak_rss_mb() -> float:
 
             pmc = PROCESS_MEMORY_COUNTERS()
             pmc.cb = ctypes.sizeof(PROCESS_MEMORY_COUNTERS)
-            handle = ctypes.windll.kernel32.GetCurrentProcess()
-            if ctypes.windll.psapi.GetProcessMemoryInfo(handle, ctypes.byref(pmc), pmc.cb):
-                return round(pmc.PeakWorkingSetSize / (1024.0 * 1024.0), 1)
+            kernel32 = ctypes.windll.kernel32
+            psapi = ctypes.windll.psapi
+            psapi.GetProcessMemoryInfo.argtypes = [
+                wintypes.HANDLE,
+                ctypes.POINTER(PROCESS_MEMORY_COUNTERS),
+                wintypes.DWORD,
+            ]
+            psapi.GetProcessMemoryInfo.restype = wintypes.BOOL
+            handle = kernel32.OpenProcess(0x1000, False, _os.getpid())
+            if handle:
+                try:
+                    if psapi.GetProcessMemoryInfo(handle, ctypes.byref(pmc), pmc.cb):
+                        return round(pmc.PeakWorkingSetSize / (1024.0 * 1024.0), 1)
+                finally:
+                    kernel32.CloseHandle(handle)
         except Exception:  # noqa: BLE001
             return 0.0
     return 0.0
