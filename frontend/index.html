@@ -1,0 +1,128 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>RAKSHA — Offline Medical Data Privacy Firewall</title>
+  <link rel="stylesheet" href="/styles.css" />
+</head>
+<body>
+  <div class="app-shell">
+    <!-- Sidebar Navigation -->
+    <aside class="sidebar" id="sidebar">
+      <div class="sidebar-top">
+        <div class="brand">
+          <div class="brand-mark" aria-hidden="true">
+            <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M12 2L4 5.5v6.2c0 5.1 3.4 9.7 8 11.3 4.6-1.6 8-6.2 8-11.3V5.5L12 2z" />
+              <path d="M9 12l2 2 4-4" />
+            </svg>
+          </div>
+          <div>
+            <div class="brand-name">RAKSHA</div>
+            <div class="brand-sub">Privacy Firewall</div>
+          </div>
+        </div>
+
+        <div class="sidebar-search">
+          <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2">
+            <circle cx="11" cy="11" r="7" />
+            <path d="M21 21l-4.35-4.35" />
+          </svg>
+          <input type="text" id="global-search" placeholder="Jump to page or file..." autocomplete="off" />
+        </div>
+
+        <div class="nav-group-label">COMMAND &amp; INGESTION</div>
+        <nav class="nav-list" id="nav-list">
+          <button class="nav-item active" data-page="overview">
+            <span class="nav-icon">◫</span><span>Overview</span>
+          </button>
+          <button class="nav-item" data-page="ingestion">
+            <span class="nav-icon">⇪</span><span>Datasets &amp; Inspection</span>
+          </button>
+          <button class="nav-item" data-page="processing">
+            <span class="nav-icon">▶</span><span>Processing Centre</span>
+          </button>
+          <button class="nav-item" data-page="pipeline">
+            <span class="nav-icon">❖</span><span>Security Pipeline</span>
+          </button>
+
+          <div class="nav-group-label">ANALYTICS &amp; ASSURANCE</div>
+          <button class="nav-item" data-page="analytics">
+            <span class="nav-icon">▤</span><span>Privacy Analytics</span>
+            <span class="nav-badge" id="badge-entities">0</span>
+          </button>
+          <button class="nav-item" data-page="clinical">
+            <span class="nav-icon">+</span><span>Clinical Preservation</span>
+          </button>
+          <button class="nav-item" data-page="linkage">
+            <span class="nav-icon">⛓</span><span>Patient Linkage</span>
+          </button>
+          <button class="nav-item" data-page="audit">
+            <span class="nav-icon">☰</span><span>File Audit</span>
+            <span class="nav-badge" id="badge-files">0</span>
+          </button>
+          <button class="nav-item" data-page="reports">
+            <span class="nav-icon">⬇</span><span>Reports &amp; Exports</span>
+          </button>
+          <button class="nav-item" data-page="settings">
+            <span class="nav-icon">⚙</span><span>System Settings</span>
+          </button>
+        </nav>
+      </div>
+
+      <div class="sidebar-footer">
+        <div class="engine-card">
+          <div class="engine-title">
+            <span class="status-dot dot-ok"></span>
+            <span>Local Engine Active</span>
+          </div>
+          <p class="engine-desc">100% Offline • CPU-Only • Zero External AI or Telemetry</p>
+          <div class="engine-meta" id="sidebar-mode-pill">No Dataset</div>
+        </div>
+      </div>
+    </aside>
+
+    <!-- Main Workspace -->
+    <div class="main-wrap">
+      <header class="topbar">
+        <div class="topbar-left">
+          <button class="mobile-menu-btn" id="mobile-menu-btn" aria-label="Toggle menu">☰</button>
+          <div class="breadcrumb">
+            <span class="crumb-root">RAKSHA</span>
+            <span class="crumb-sep">›</span>
+            <span class="crumb-current" id="crumb-current">Overview</span>
+          </div>
+        </div>
+        <div class="topbar-right">
+          <select class="select-ctrl" id="topbar-dataset-select" title="Active Dataset"></select>
+          <select class="select-ctrl" id="topbar-run-select" title="Active Processing Run"></select>
+          <span class="pill pill-offline" title="All processing runs strictly offline on local CPU">
+            <span class="status-dot dot-cyan"></span> OFFLINE
+          </span>
+          <span class="pill pill-state" id="topbar-run-state">IDLE</span>
+          <button class="btn btn-primary btn-sm" id="btn-refresh">Refresh</button>
+        </div>
+      </header>
+
+      <main class="content" id="main-content">
+        <div class="loading-banner" id="loading-banner">Loading RAKSHA security telemetry...</div>
+        <div class="error-banner" id="error-banner" style="display:none;"></div>
+
+        <section class="page active" id="page-overview"></section>
+        <section class="page" id="page-ingestion"></section>
+        <section class="page" id="page-processing"></section>
+        <section class="page" id="page-pipeline"></section>
+        <section class="page" id="page-analytics"></section>
+        <section class="page" id="page-clinical"></section>
+        <section class="page" id="page-linkage"></section>
+        <section class="page" id="page-audit"></section>
+        <section class="page" id="page-reports"></section>
+        <section class="page" id="page-settings"></section>
+      </main>
+    </div>
+  </div>
+
+  <script src="/app.js"></script>
+</body>
+</html>
