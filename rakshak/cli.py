@@ -74,25 +74,10 @@ from rakshak.detection.hidden_surfaces import (
     sanitize_json_key,
     sanitize_metadata_value,
     sanitize_base64_text,
+    sanitize_embedded_base64,
 )
 
 _ALPHABET = "0123456789ABCDEFGHJKMNPQRSTVWXYZ"
-
-
-def _lf_sha256(path: Path) -> str:
-    """Compute SHA256 of file content with CRLF normalized to LF.
-
-    The official evaluator hashes files after LF normalization, so our
-    report.json must use the same digest to allow the evaluator to map
-    input files to their sanitized output paths.
-    """
-    raw = path.read_bytes()
-    return hashlib.sha256(raw.replace(b"\r\n", b"\n")).hexdigest()
-
-
-def _raw_sha256(path: Path) -> str:
-    """SHA256 of raw file bytes without any normalization."""
-    return hashlib.sha256(path.read_bytes()).hexdigest()
 
 # ---------------------------------------------------------------------------
 # DOB patterns in free text (not field-classified)
@@ -117,12 +102,11 @@ _DATED_LABEL_RE = re.compile(
 _DIRECT_PII = frozenset({
     "PATIENT_NAME", "RELATIVE_NAME", "PHONE", "MRN", "AADHAAR",
     "ABHA_NUMBER", "ABHA_ADDRESS", "PAN", "EMAIL", "INSURANCE_ID",
-    "DOB", "ADDRESS", "HOUSE", "LOCALITY", "VILLAGE",
-    "PIN", "VILLAGE_OR_LOCALITY",
+    "ADDRESS", "HOUSE", "LOCALITY",
 })
 
 _KEEP_TYPES = frozenset({
-    "CLINICAL_KEEP", "AGE", "GENDER", "AGE_SEX", "RELATION_LABEL",
+    "CLINICAL_KEEP", "GENDER", "AGE_SEX", "RELATION_LABEL",
     "DISTRICT", "TEHSIL",
 })
 
@@ -193,7 +177,8 @@ def _clean_text(text: str, entity_counts: Counter, pseudonym_str: str = '') -> s
 
 
 def _clean_csv_value(val: str, col_type: Optional[str], entity_counts: Counter,
-                     pseudonym_str: str, policy: dict, patient_key: Optional[str]) -> str:
+                     pseudonym_str: str, policy: dict, patient_key: Optional[str],
+                     row_district: str = "") -> str:
     """Clean a CSV cell based on its column classification."""
     if not val.strip():
         return val
@@ -202,6 +187,12 @@ def _clean_csv_value(val: str, col_type: Optional[str], entity_counts: Counter,
                     "district", "tehsil"}:
         return val
     if col_type == "date":
+        if patient_key:
+            shifted = shift_date_string(val, patient_key,
+                                        int(policy.get('date_shift_max_days', 180)))
+            if shifted:
+                entity_counts["DATE"] += 1
+                return shifted
         entity_counts["DATE"] += 1
         return "[DATE]"
     if col_type == "metadata_path":
@@ -259,7 +250,7 @@ def _clean_csv_value(val: str, col_type: Optional[str], entity_counts: Counter,
             return '[DOB]'
         elif col_type == 'village':
             entity_counts['VILLAGE'] += 1
-            return '[VILLAGE]'
+            return generalize_village(val, row_district)
         elif col_type == 'pin':
             entity_counts['PIN'] += 1
             return generalize_pin(val)
@@ -285,6 +276,12 @@ def _clean_text_full(
     """Comprehensive PII detection and redaction using all detection modules."""
     if not text or not text.strip():
         return text
+
+    # 0. Decode & sanitize any embedded Base64 payloads before span scanning
+    text = sanitize_embedded_base64(
+        text,
+        lambda t: _clean_text_full(t, entity_counts, known_names),
+    )
 
     all_spans: list[tuple[int, int, str]] = []
 
@@ -357,6 +354,9 @@ def _clean_json_full(
     entity_counts: Counter[str],
     parent_key: str = "",
     doc_names: set[str] | None = None,
+    patient_key: Optional[str] = None,
+    policy: dict[str, Any] | None = None,
+    inherited_district: str = "",
 ) -> Any:
     """Recursively clean JSON using field classification + text detection."""
     if isinstance(value, str):
@@ -364,12 +364,18 @@ def _clean_json_full(
     if isinstance(value, (int, float, bool)) or value is None:
         return value
     if isinstance(value, list):
-        return [_clean_json_full(item, entity_counts, parent_key, doc_names) for item in value]
+        return [
+            _clean_json_full(item, entity_counts, parent_key, doc_names, patient_key, policy, inherited_district)
+            for item in value
+        ]
     if not isinstance(value, dict):
         return value
 
     result: dict[str, Any] = {}
     used_keys: set[str] = set()
+    pol = policy or {}
+    band_width = int(pol.get("age_band_years", 5))
+    max_shift = int(pol.get("date_shift_max_days", 180))
 
     def _text_cleaner(t: str) -> str:
         return _clean_text_full(t, entity_counts, doc_names)
@@ -378,11 +384,18 @@ def _clean_json_full(
     resource_type = value.get("resourceType", "")
     effective_parent = resource_type.lower() if resource_type else parent_key
 
+    # Find local district for village generalization
+    local_district = inherited_district
+    for dk, dv in value.items():
+        if isinstance(dv, str) and dv.strip() and classify_field(dk, effective_parent) == "DISTRICT":
+            local_district = dv.strip()
+            break
+
     for k, v in value.items():
         fc = classify_field(k, effective_parent)
 
         # Sanitize key if it contains PII (e.g. patient_index.json by_name keys)
-        clean_k = sanitize_json_key(k, _text_cleaner, used_keys=used_keys)
+        clean_k = sanitize_json_key(k, _text_cleaner, used_keys=used_keys, extra_names=doc_names)
 
         if fc == "CLINICAL_KEEP":
             result[clean_k] = v
@@ -415,14 +428,46 @@ def _clean_json_full(
                 result[clean_k] = new_list
             else:
                 # Nested dict/list — recurse to clean sub-values
-                result[clean_k] = _clean_json_full(v, entity_counts, k, doc_names)
+                result[clean_k] = _clean_json_full(v, entity_counts, k, doc_names, patient_key, policy, local_district)
+
+        elif fc == "DOB":
+            if isinstance(v, str) and v.strip():
+                shifted = shift_date_string(v, patient_key, max_shift) if patient_key else None
+                result[clean_k] = shifted if shifted else "[DOB]"
+                entity_counts["DOB"] += 1
+            else:
+                result[clean_k] = _clean_json_full(v, entity_counts, k, doc_names, patient_key, policy, local_district) if not isinstance(v, str) else v
 
         elif fc == "DATE":
             if isinstance(v, str) and v.strip():
-                result[clean_k] = "[DATE]"
+                shifted = shift_date_string(v, patient_key, max_shift) if patient_key else None
+                result[clean_k] = shifted if shifted else "[DATE]"
                 entity_counts["DATE"] += 1
             else:
-                result[clean_k] = _clean_json_full(v, entity_counts, k, doc_names) if not isinstance(v, str) else v
+                result[clean_k] = _clean_json_full(v, entity_counts, k, doc_names, patient_key, policy, local_district) if not isinstance(v, str) else v
+
+        elif fc == "AGE":
+            if isinstance(v, (int, float)) and not isinstance(v, bool):
+                result[clean_k] = age_band(int(v), band_width)
+            elif isinstance(v, str) and v.strip():
+                m_age = re.match(r"^\s*(\d+)", v)
+                result[clean_k] = age_band(int(m_age.group(1)), band_width) if m_age else v
+            else:
+                result[clean_k] = v
+
+        elif fc == "PIN":
+            if isinstance(v, (str, int)) and str(v).strip():
+                result[clean_k] = generalize_pin(str(v))
+                entity_counts["PIN"] += 1
+            else:
+                result[clean_k] = v
+
+        elif fc in ("VILLAGE", "VILLAGE_OR_LOCALITY"):
+            if isinstance(v, str) and v.strip():
+                result[clean_k] = generalize_village(v, local_district)
+                entity_counts["VILLAGE"] += 1
+            else:
+                result[clean_k] = v
 
         elif fc == "METADATA_PATH":
             result[clean_k] = sanitize_metadata_value(v, _text_cleaner) if isinstance(v, str) else v
@@ -435,7 +480,7 @@ def _clean_json_full(
 
         else:
             # Unclassified — recurse
-            result[clean_k] = _clean_json_full(v, entity_counts, k, doc_names)
+            result[clean_k] = _clean_json_full(v, entity_counts, k, doc_names, patient_key, policy, local_district)
 
     return result
 
@@ -446,7 +491,7 @@ def _clean_json_value(value: Any, entity_counts: Counter,
                       key_name: str = '') -> Any:
     """Clean JSON values using context-aware detection and hidden-surface checks."""
     names = _collect_names_json(value)
-    return _clean_json_full(value, entity_counts, key_name, names)
+    return _clean_json_full(value, entity_counts, key_name, names, patient_key=patient_key, policy=policy)
 
 
 # ---------------------------------------------------------------------------
@@ -536,19 +581,23 @@ def _process_csv(
     clean_header = sanitize_csv_header(
         header,
         lambda t: _clean_text_full(t, entity_counts, doc_names),
+        extra_names=doc_names,
     )
     writer.writerow(clean_header)
+
+    district_col = col_types.index("district") if "district" in col_types else None
 
     for idx, row in enumerate(body):
         record_id = f"sanitized/{lookup_rel}::row:{idx}"
         patient_key = cluster_keys.get(record_id)
         psn = generate_pseudonym(patient_key, secret) if patient_key else None
+        row_district = row[district_col].strip() if (district_col is not None and district_col < len(row)) else ""
 
         cleaned_row = []
         for col_idx, cell in enumerate(row):
             ct = col_types[col_idx] if col_idx < len(col_types) else None
             cleaned = _clean_csv_value(cell, ct, entity_counts,
-                                       psn or '', policy, patient_key)
+                                       psn or '', policy, patient_key, row_district)
             # Inject pseudonym into patient_ref/UHID column
             if psn and col_idx == patient_ref_col:
                 cleaned = psn
@@ -699,38 +748,26 @@ def run_pipeline(input_dir: Path, output_dir: Path, policy_path: Path | None = N
     ingested_files: list[tuple[IngestedFile, dict[str, Any]]] = []
     quarantined: list[dict[str, Any]] = []
     resolver = IdentityResolver()
+    discovered_names: set[str] = set()
+
+    def _add_ev(ev: RecordEvidence) -> None:
+        resolver.add_record(ev)
+        if ev.patient_name:
+            discovered_names.add(ev.patient_name)
+        if ev.relative_name:
+            discovered_names.add(ev.relative_name)
 
     for path in discover_files(input_dir):
-        # Compute evaluator-compatible SHA256 (LF-normalized + raw for Windows compatibility)
-        lf_sha = _lf_sha256(path)
-        raw_sha = _raw_sha256(path)
-
         ing, meta = ingest_file(
             path, input_dir,
             max_file_bytes=max_file_bytes,
             max_json_depth=max_json_depth,
         )
         if ing is None:
-            quarantined.append(make_quarantine_entry(lf_sha, meta["reason"]))
-            if raw_sha != lf_sha:
-                quarantined.append(make_quarantine_entry(raw_sha, meta["reason"]))
+            quarantined.append(make_quarantine_entry(meta["input_sha256"], meta["reason"]))
             continue
 
-        # Patch IngestedFile to use LF-normalized SHA256 for report mapping.
-        # Also remember the raw SHA so we can emit a secondary report entry.
-        alt_sha = raw_sha if raw_sha != lf_sha else None
-        if ing.input_sha256 != lf_sha:
-            ing = IngestedFile(
-                rel_path=ing.rel_path,
-                input_sha256=lf_sha,
-                encoding=ing.encoding,
-                fmt=ing.fmt,
-                delimiter=ing.delimiter,
-                parsed=ing.parsed,
-                raw_text=ing.raw_text,
-            )
-
-        ingested_files.append((ing, meta, alt_sha))
+        ingested_files.append((ing, meta))
         hospital = _detect_hospital(ing.rel_path)
 
         # Extract evidence for identity resolution
@@ -739,7 +776,7 @@ def run_pipeline(input_dir: Path, output_dir: Path, policy_path: Path | None = N
             for idx, row in enumerate(body):
                 ev = extract_evidence_csv(header, row, f"sanitized/{ing.rel_path}",
                                          idx, hospital)
-                resolver.add_record(ev)
+                _add_ev(ev)
 
         elif ing.fmt in ("json", "fhir"):
             data = ing.parsed
@@ -753,7 +790,7 @@ def run_pipeline(input_dir: Path, output_dir: Path, policy_path: Path | None = N
             if is_doc:
                 ev = extract_evidence_json(data if isinstance(data, dict) else {},
                                            f"sanitized/{ing.rel_path}", "doc", hospital)
-                resolver.add_record(ev)
+                _add_ev(ev)
             else:
                 for k in ('visits', 'results', 'patients'):
                     v = data.get(k)
@@ -762,11 +799,11 @@ def run_pipeline(input_dir: Path, output_dir: Path, policy_path: Path | None = N
                         for idx, item in enumerate(v):
                             ev = extract_evidence_json(item, f"sanitized/{ing.rel_path}",
                                                        f"/{pk}/{idx}", hospital)
-                            resolver.add_record(ev)
+                            _add_ev(ev)
 
         else:  # text
             ev = extract_evidence_text(ing.parsed, f"sanitized/{ing.rel_path}", hospital)
-            resolver.add_record(ev)
+            _add_ev(ev)
 
     # Run identity resolution
     resolver.resolve()
@@ -780,12 +817,10 @@ def run_pipeline(input_dir: Path, output_dir: Path, policy_path: Path | None = N
     entity_counts: Counter = Counter()
     records_generalized = 0
 
-    for ing, meta, alt_sha in ingested_files:
-        # Handle PII in filenames using Laptop B's sanitize_filename
+    for ing, meta in ingested_files:
+        # Handle PII in filenames using Laptop B's sanitize_filename + discovered names
         orig_rel = ing.rel_path
-        out_rel = sanitize_filename(orig_rel, secret)
-        if out_rel == orig_rel and _filename_has_pii(Path(orig_rel).name):
-            out_rel = _sanitize_filename(orig_rel, ing.input_sha256)
+        out_rel = sanitize_filename(orig_rel, secret, extra_patient_names=discovered_names)
         renamed = out_rel != orig_rel
         if renamed:
             entity_counts['FILENAME_PII'] += 1
@@ -809,6 +844,9 @@ def run_pipeline(input_dir: Path, output_dir: Path, policy_path: Path | None = N
         elif ing.fmt in ("json", "fhir"):
             result_text = _process_json(ing, records, entity_counts, resolver,
                                         policy, cluster_keys, secret, orig_rel=orig_rel)
+            records_generalized += sum(1 for r in records
+                                       if r.get("file") == f"sanitized/{out_rel}"
+                                       and r.get("patient"))
         else:
             result_text = _process_text(ing, records, entity_counts, resolver,
                                         policy, cluster_keys, secret, orig_rel=orig_rel)
@@ -823,14 +861,6 @@ def run_pipeline(input_dir: Path, output_dir: Path, policy_path: Path | None = N
             "status": "sanitized",
         }
         file_entries.append(entry)
-        # Emit a secondary entry with raw-bytes SHA256 so the evaluator
-        # can find the mapping regardless of CRLF/LF line ending state.
-        if alt_sha:
-            file_entries.append({
-                "input_sha256": alt_sha,
-                "output": f"sanitized/{out_rel}",
-                "status": "sanitized",
-            })
 
     # Filter records for exported files only
     exported_records = filter_exported_records(records, file_entries)
