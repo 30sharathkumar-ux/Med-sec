@@ -6,6 +6,7 @@ from rakshak.linkage.resolver import (
     RecordEvidence,
     extract_evidence_csv,
     extract_evidence_text,
+    extract_issuer_prefix,
 )
 
 
@@ -62,6 +63,29 @@ class TestIdentityRecallImprovements(unittest.TestCase):
         ev = extract_evidence_text(text, "sanitized/discharge/note_0015.txt")
         self.assertEqual(ev.patient_name, "Zainab")
         self.assertEqual(ev.relative_name_normalized, "salim")
+
+    def test_dynamic_issuer_prefix_generalizes_to_unseen_hospitals(self):
+        """Dynamic issuer-prefix extractor handles arbitrary unseen hospital prefixes."""
+        self.assertEqual(extract_issuer_prefix("KGMU-2026-001"), "KGMU")
+        self.assertEqual(extract_issuer_prefix("APO/26/00912"), "APO")
+        self.assertEqual(extract_issuer_prefix("MED-99881"), "MED")
+        self.assertIsNone(extract_issuer_prefix("UHID-12345"))
+        self.assertIsNone(extract_issuer_prefix("IPD-2026-00454"))
+
+        # Cross-lab merge with unseen hospital prefix KGMU-
+        r = IdentityResolver()
+        ev1 = extract_evidence_csv(
+            ["uhid", "patient_name"], ["KGMU-00421", "Kavita Verma"],
+            "sanitized/reg/kgmu_reg.csv", 0, "kgmu",
+        )
+        ev2 = extract_evidence_csv(
+            ["uhid", "patient_name"], ["KGMU-00421", "Kavita Verma"],
+            "sanitized/lab/external_lab.csv", 0, "external_lab",
+        )
+        r.add_record(ev1)
+        r.add_record(ev2)
+        clusters = r.resolve()
+        self.assertEqual(len(set(clusters.values())), 1)
 
 
 if __name__ == "__main__":

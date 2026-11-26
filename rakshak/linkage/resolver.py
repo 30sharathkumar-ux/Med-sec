@@ -582,11 +582,12 @@ def extract_evidence_text(
         if any(c.isdigit() for c in mrn_val):
             ev.mrns.append(mrn_val)
 
-    # Also catch MRN-like identifiers in context (e.g. "IPD-2026-00454" standalone)
+    # Also catch MRN-like identifiers in context (e.g. "IPD-2026-00454" or "KGMU-001234" standalone)
     mrn_standalone_re = re.compile(
         r'(?:^|[\s,;|(])'
-        r'((?:IPD|OPD|IP|OP|SNJ|JJH|DHH|UHID)[\s/\-]*[\dA-Z/\-]{4,})',
-        re.IGNORECASE | re.MULTILINE,
+        r'((?:(?i:IPD|OPD|IP|OP|UHID|MRN|REG|ADM)[\s/\-]*[\dA-Z/\-]{4,})'
+        r'|(?:[A-Z]{2,6}[-/]\d[0-9A-Z/\-]{3,}))',
+        re.MULTILINE,
     )
     for m in mrn_standalone_re.finditer(text_digits):
         mrn_val = normalize_mrn(m.group(1))
@@ -659,23 +660,28 @@ def _age_from_dob(dob: str) -> int | None:
 
 
 # ---------------------------------------------------------------------------
-# Hospital inference from MRN prefix
+# Dynamic issuer-prefix extraction from MRN/UHID
 # ---------------------------------------------------------------------------
 
-_MRN_HOSPITAL_MAP = {
-    'JJH': 'jeevanjyoti',
-    'SNJ': 'sanjeevani',
-    'DHH': 'dhh',
-    'AH': 'arogya',
-}
+GENERIC_ID_PREFIXES = frozenset({
+    "UHID", "MRN", "MRDN", "IPD", "OPD", "ADM", "PAT", "ID", "REG", "LAB", "RX", "IP", "OP",
+})
+ISSUER_PREFIX_RE = re.compile(r"^([A-Z]{2,6})[-/]")
+
+
+def extract_issuer_prefix(mrn: str) -> str | None:
+    """Extract an institutional issuer prefix from an MRN (e.g. 'KGMU-1234' -> 'KGMU')."""
+    m = ISSUER_PREFIX_RE.match(mrn.strip().upper())
+    if not m:
+        return None
+    prefix = m.group(1)
+    return None if prefix in GENERIC_ID_PREFIXES else prefix
+
 
 def _infer_hospital_from_mrn(mrn: str) -> str:
-    """Infer hospital from MRN prefix (e.g. JJH-0076864 → jeevanjyoti)."""
-    mrn_upper = mrn.strip().upper()
-    for prefix, hospital in _MRN_HOSPITAL_MAP.items():
-        if mrn_upper.startswith(prefix):
-            return hospital
-    return ''
+    """Infer issuer tag from MRN prefix dynamically for cross-file MRN grouping."""
+    prefix = extract_issuer_prefix(mrn)
+    return f"issuer:{prefix.lower()}" if prefix else ''
 
 
 def _effective_hospital(rec: 'RecordEvidence') -> str:

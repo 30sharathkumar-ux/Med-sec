@@ -23,7 +23,7 @@
 2. **Identity Resolution Recall (`rakshak/linkage/resolver.py`)** — **0.72 → 0.99 recall, 1.00 precision, 0 wrong merges**
    - Fixed `_MRN_KEYS` so `Registration Date` is never misclassified as an MRN.
    - Added `age_sex` (e.g. `65/F`) parsing in `extract_evidence_csv`.
-   - Prioritized explicit MRN hospital prefixes (`JJH-`, `SNJ/`, `DHH-`, `AH-`) when grouping MRNs across external lab CSVs (`sanjeevani_results.csv`, `city_results.csv`, `lifeline_results.csv`, `pathkind_results.csv`).
+   - Replaced hardcoded MRN hospital map with dynamic `extract_issuer_prefix()` (`[A-Z]{2,6}[-/]`, excluding generic ID prefixes) so any unseen hospital prefix (`KGMU-`, `APO/`, `MED-`, etc.) groups cleanly across external lab exports.
    - Used phonetic keys when checking distinct-name collision guards so cross-script / spelling variants (`Rina Nishad`, `Reena Nishad`, `रीना निषाद`) don't abort valid MRN merges.
    - Added DOB↔age cross-matching (`_age_from_dob`), single-token phonetic name matching, and `<Name>, W/o <Relative>` note extraction.
 3. **Post-Linkage k-Anonymity Module (`rakshak/privacy/k_anonymity.py`)**
