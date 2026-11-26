@@ -14,7 +14,16 @@ _ABHA_ADDR_RE = re.compile(r"\b[\w.+-]+@(?:abdm|sbx|ndhm)\b", re.IGNORECASE)
 _AADHAAR_MASKED_RE = re.compile(r"(?i)(?<![A-Za-z0-9])(?:x{4}|[*]{4})[-\s]?(?:x{4}|[*]{4})[-\s]?\d{4}(?!\d)")
 _AADHAAR_RE = re.compile(r"(?<!\d)(?<!-)[2-9]\d{3}[\s-]?\d{4}[\s-]?\d{4}(?!\d)|(?<!\d)(?<!-)\d{4}[\s-]\d{4}[\s-]\d{4}(?!\d)|(?<!\d)\d{12}(?!\d)")
 _PHONE_RE = re.compile(
-    r"(?<!\d)(?:\+?91[-\s.]?)?(?:0?[6-9]\d{4}[-\s.]?\d{5}|0?[6-9]\d{2}[-\s.]?\d{3}[-\s.]?\d{4}|[6-9]\d{1,3}[Xx*]{4,6}\d{2,4})(?!\d)"
+    r"(?<!\d)(?:\+?91[-\s.]?)?"
+    r"(?:"
+    r"0?[6-9]\d{9}"
+    r"|0?[6-9]\d{4}[-\s.]?\d{5}"
+    r"|0?[6-9]\d{3}[-\s.]?\d{6}"
+    r"|0?[6-9]\d{2}[-\s.]?\d{3}[-\s.]?\d{4}"
+    r"|0?[6-9]\d[-\s.]?\d{4}[-\s.]?\d{4}"
+    r"|[6-9]\d{1,3}[Xx*]{4,6}\d{2,4}"
+    r")"
+    r"(?!\d)"
 )
 _EMAIL_RE = re.compile(r"[\w.+-]+@[\w-]+(?:\.[\w.-]+)+")
 _PAN_RE = re.compile(r"\b[A-Z]{5}\d{4}[A-Z]\b")
@@ -47,12 +56,15 @@ IDENTIFIER_SPECS: list[tuple[str, re.Pattern[str]]] = [
 ]
 
 # Contextual prefix patterns for unseen MRN/Insurance formats after explicit labels
+# Rewritten without variable-width lookbehinds for Python 3.11 compatibility.
 _LABELED_MRN_RE = re.compile(
-    r"(?i)(?<=\b(?:UHID|MRN|IPD\s*No|Reg\s*No|PatientID|Patient\s*ID|Reg\.?\s*No|पंजीकरण\s*सं\.|आईपीडी\s*सं\.)[:\s#-]{1,4})"
+    r"(?i)\b(?:UHID|MRN|IPD\s*No|Reg\s*No|PatientID|Patient\s*ID|Reg\.?\s*No|पंजीकरण\s*सं\.|आईपीडी\s*सं\.)"
+    r"[:\s#-]{1,4}"
     r"([A-Za-z0-9][A-Za-z0-9/_-]{4,24})"
 )
 _LABELED_INS_RE = re.compile(
-    r"(?i)(?<=\b(?:PMJAY|Policy\s*No|Insurance\s*ID|Claim\s*ID)[:\s#-]{1,4})"
+    r"(?i)\b(?:PMJAY|Policy\s*No|Insurance\s*ID|Claim\s*ID)"
+    r"[:\s#-]{1,4}"
     r"([A-Za-z0-9][A-Za-z0-9/_-]{5,24})"
 )
 
