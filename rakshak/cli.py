@@ -166,13 +166,13 @@ _PII_COLUMN_PATTERNS = {
         r'|pita[\s_]*(?:ka\s*naam)?|mata|pati|patni|relation[\s_]*name',
         re.IGNORECASE,
     ),
-    'address': re.compile(r'address|pata|पता|निवास|line', re.IGNORECASE),
-    'village': re.compile(r'village|gram|gaon|गाँव|ग्राम|mohalla', re.IGNORECASE),
+    'address': re.compile(r'address|pata|पता|निवास|line|street|rasta|gali', re.IGNORECASE),
+    'village': re.compile(r'village|gram|gaon|गाँव|ग्राम|mohalla|city|town|sheher', re.IGNORECASE),
     'house': re.compile(r'house|makan|h\.?\s*no', re.IGNORECASE),
     'landmark': re.compile(r'landmark|near|opp', re.IGNORECASE),
     'dob': re.compile(r'dob|date[\s_]*of[\s_]*birth|janm[\s_]*tithi|जन्म', re.IGNORECASE),
     'age': re.compile(r'^age$|^umar$|^उम्र$|^आयु$', re.IGNORECASE),
-    'pin': re.compile(r'pin[\s_]*(?:code)?|postal|डाक', re.IGNORECASE),
+    'pin': re.compile(r'pin[\s_]*(?:code)?|postal|डाक|zip', re.IGNORECASE),
 }
 
 # Columns to generalize (not remove entirely)
