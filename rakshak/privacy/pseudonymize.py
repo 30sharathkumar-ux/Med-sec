@@ -33,7 +33,7 @@ def generate_pseudonym(patient_key: str, secret: Optional[bytes] = None) -> str:
         A pseudonym in the form PSN-XXXXXX (6 Crockford base32 chars).
     """
     key = secret if secret is not None else _get_secret()
-    digest = hmac.new(key, patient_key.encode("utf-8"), hashlib.sha256).digest()
+    digest = hmac.new(key, b"psn|" + patient_key.encode("utf-8"), hashlib.sha256).digest()
     n = int.from_bytes(digest[:5], "big")
     code = "".join(_ALPHABET[(n >> (5 * i)) & 31] for i in range(6))
     return f"PSN-{code}"

@@ -1,0 +1,30 @@
+{
+  "timestamp": "2026-11-27T04:44:35+0530",
+  "commit": "1c4354aaa2e7f1422c91076ff0274520909063c9",
+  "python": "3.11.9 (tags/v3.11.9:de54cf5, Apr  2 2024, 10:12:12) [MSC v.1938 64 bit (AMD64)]",
+  "pytest": {
+    "total": 151,
+    "passed": 151,
+    "failed": 0
+  },
+  "check_dev": {
+    "leaked": "0/3230",
+    "canaries": "0/4",
+    "medical": "4854/4855 (100.0%)",
+    "linkage": "P=1.00 R=0.72 F0.5=0.93",
+    "wrong_merges": 0,
+    "raw_copies": 0
+  },
+  "check_submission": "READY TO SUBMIT (Linux WSL2)",
+  "validate_output": "CONTRACT OK (Linux WSL2)",
+  "runtime_s": 10.9,
+  "peak_rss_mb": 31.6,
+  "rapidfuzz": true,
+  "phases_pending": [
+    "domain_separation",
+    "k_anonymity",
+    "attacker_sim",
+    "identity_recall",
+    "fhir_validation"
+  ]
+}

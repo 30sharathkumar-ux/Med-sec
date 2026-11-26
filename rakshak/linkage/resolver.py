@@ -96,7 +96,7 @@ _ABHA_KEYS = re.compile(
 )
 _MRN_KEYS = re.compile(
     r'uhid|mrd?n|ipd[\s_]*(?:no|number)?|opd[\s_]*(?:no|number)?'
-    r'|reg[\s_]*(?:no|number|id)?|patient[\s_]*(?:id|ref)'
+    r'|reg(?:istration)?[\s_]*(?:no|number|id)\b|patient[\s_]*(?:id|ref)'
     r'|hospital[\s_]*uhid',
     re.IGNORECASE,
 )
@@ -253,6 +253,11 @@ def extract_evidence_csv(
             ev.mrns.append(normalize_mrn(val))
         elif _AGE_KEYS.search(col_lower):
             ev.age = _parse_age(val)
+        elif re.match(r'^age[\s_/]*sex$', col_lower):
+            ev.age = _parse_age(val)
+            m_sex = re.search(r'/\s*([MF]|male|female)\b', val, re.IGNORECASE)
+            if m_sex:
+                ev.gender = _parse_gender(m_sex.group(1))
         elif _GENDER_KEYS.search(col_lower):
             ev.gender = _parse_gender(val)
         elif _DOB_KEYS.search(col_lower):
@@ -517,6 +522,20 @@ def extract_evidence_text(
                 ev.patient_name_phonetic = phonetic_key(name)
                 break
 
+        # Fallback: "<Name>, S/o|D/o|W/o|C/O <Relative>" in discharge/clinical notes
+        if not ev.patient_name:
+            m_rel_name = re.search(
+                r'(?:^|\n)[^\S\n]*([A-Za-z\u0900-\u097F][A-Za-z\u0900-\u097F .]{1,40}?)\s*,?\s*'
+                r'(?:S|D|W|C)\s*/\s*(?:o|O)\b',
+                text,
+            )
+            if m_rel_name:
+                cand = m_rel_name.group(1).strip()
+                if len(cand) > 1 and not re.match(r'(?:discharge|note|opd|ipd|patient)\b', cand, re.IGNORECASE):
+                    ev.patient_name = cand
+                    ev.patient_name_normalized = normalize_name(cand)
+                    ev.patient_name_phonetic = phonetic_key(cand)
+
     # Relative name from relation pattern or explicit labels
     rel = extract_relative_name(text)
     if rel:
@@ -619,6 +638,24 @@ def _normalize_dob(dob: str) -> str:
         return f"{y}-{int(mo):02d}-{int(d):02d}"
     # MM/DD/YYYY (US format) — ambiguous, try both
     return dob
+
+
+def _age_from_dob(dob: str) -> int | None:
+    """Derive approximate current age from a DOB string."""
+    norm = _normalize_dob(dob)
+    m = re.match(r'^(\d{4})-(\d{2})-(\d{2})$', norm)
+    if not m:
+        return None
+    try:
+        import datetime as _dt
+        birth = _dt.date(int(m.group(1)), int(m.group(2)), int(m.group(3)))
+        today = _dt.date.today()
+        age = today.year - birth.year
+        if (today.month, today.day) < (birth.month, birth.day):
+            age -= 1
+        return age if 0 <= age <= 120 else None
+    except (ValueError, OverflowError):
+        return None
 
 
 # ---------------------------------------------------------------------------
@@ -726,8 +763,9 @@ class IdentityResolver:
                 if len(indices) < 2:
                     continue
                 # Check if names conflict wildly (e.g. a shared payer PAN or helpline phone)
+                # Group by phonetic key so spelling/transliteration variants count as 1 person
                 distinct_names = {
-                    self._records[i].patient_name_normalized
+                    self._records[i].patient_name_phonetic or self._records[i].patient_name_normalized
                     for i in indices
                     if self._records[i].patient_name_normalized
                 }
@@ -739,20 +777,21 @@ class IdentityResolver:
                         union(indices[0], indices[i])
 
         # MRNs: only merge within same hospital to avoid cross-hospital collisions
-        # Use effective hospital (inferred from MRN prefix if path doesn't tell us)
+        # Use MRN prefix hospital when explicit, else effective hospital
         for _key, indices in mrn_index.items():
             if len(indices) < 2:
                 continue
+            mrn_hosp = _infer_hospital_from_mrn(_key)
             hospital_groups: dict[str, list[int]] = defaultdict(list)
             for idx in indices:
-                h = _effective_hospital(self._records[idx]) or 'unknown'
+                h = mrn_hosp or _effective_hospital(self._records[idx]) or 'unknown'
                 hospital_groups[h].append(idx)
             # Also try cross-group merging for 'unknown' records with known hospitals
             unknown_group = hospital_groups.pop('unknown', [])
             for _h, group in hospital_groups.items():
                 # Merge known-hospital group internally
                 distinct_names = {
-                    self._records[i].patient_name_normalized
+                    self._records[i].patient_name_phonetic or self._records[i].patient_name_normalized
                     for i in group
                     if self._records[i].patient_name_normalized
                 }
@@ -907,6 +946,20 @@ class IdentityResolver:
             if a_norm and b_norm and a_norm == b_norm:
                 corroboration += 2
 
+        # DOB ↔ age cross-match: derive age from DOB and compare
+        if not (a.dob and b.dob):
+            dob_age_match = False
+            if a.dob and b.age is not None:
+                a_age = _age_from_dob(a.dob)
+                if a_age is not None and abs(a_age - b.age) <= 2:
+                    dob_age_match = True
+            elif b.dob and a.age is not None:
+                b_age = _age_from_dob(b.dob)
+                if b_age is not None and abs(b_age - a.age) <= 2:
+                    dob_age_match = True
+            if dob_age_match:
+                corroboration += 1.5
+
         # Village + age match
         if (a.village and b.village and
                 self._text_similar(a.village, b.village)):
@@ -973,6 +1026,15 @@ class IdentityResolver:
 
         if len(shared) >= 2 and len(shared_meaningful) >= 1:
             return True
+
+        # Single meaningful token match: when both names have exactly 1 meaningful
+        # token (e.g. "Fatima" vs "Fatima"), allow match only if phonetic also agrees
+        if (len(a_meaningful) == 1 and len(b_meaningful) == 1
+                and a_meaningful == b_meaningful):
+            # Require phonetic agreement for safety
+            if (a.patient_name_phonetic and b.patient_name_phonetic
+                    and a.patient_name_phonetic == b.patient_name_phonetic):
+                return True
 
         # Phonetic match
         if (a.patient_name_phonetic and b.patient_name_phonetic and

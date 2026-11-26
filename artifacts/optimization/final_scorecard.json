@@ -1,0 +1,47 @@
+{
+  "commit_base": "1c4354aaa2e7f1422c91076ff0274520909063c9",
+  "tests": {
+    "total": 190,
+    "passed": 190,
+    "failed": 0,
+    "new_test_files": [
+      "tests/test_domain_separation.py",
+      "tests/test_k_anonymity.py",
+      "tests/test_fhir_validation.py",
+      "tests/test_attacker_simulation.py",
+      "tests/test_identity_recall.py"
+    ]
+  },
+  "linux_wsl2_verification": {
+    "check_submission": "READY TO SUBMIT",
+    "check_submission_time_s": 12.1,
+    "validate_output": "CONTRACT OK",
+    "check_dev": {
+      "pii_leaked": "0/3230 (0.0%)",
+      "canaries_leaked": "0/4",
+      "medical_kept": "4854/4855 (100.0%)",
+      "linkage_precision": 1.00,
+      "linkage_recall": 0.99,
+      "linkage_f05": 1.00,
+      "wrong_merges": 0,
+      "raw_copies": 0
+    }
+  },
+  "baseline_vs_final": {
+    "linkage_recall": {
+      "baseline": 0.72,
+      "final": 0.99,
+      "delta": "+0.27"
+    },
+    "linkage_f05": {
+      "baseline": 0.93,
+      "final": 1.00,
+      "delta": "+0.07"
+    },
+    "unit_tests": {
+      "baseline": 151,
+      "final": 190,
+      "delta": "+39"
+    }
+  }
+}

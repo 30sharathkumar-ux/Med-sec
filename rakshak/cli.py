@@ -76,6 +76,8 @@ from rakshak.detection.hidden_surfaces import (
     sanitize_base64_text,
     sanitize_embedded_base64,
 )
+from rakshak.privacy.fhir_validator import validate_fhir_input, validate_fhir_output
+from rakshak.privacy.k_anonymity import compute_k_anonymity_metrics
 
 _ALPHABET = "0123456789ABCDEFGHJKMNPQRSTVWXYZ"
 
@@ -784,6 +786,12 @@ def run_pipeline(input_dir: Path, output_dir: Path, policy_path: Path | None = N
 
         elif ing.fmt in ("json", "fhir"):
             data = ing.parsed
+            # Validate FHIR structure if applicable
+            if isinstance(data, dict) and data.get("resourceType"):
+                fhir_result = validate_fhir_input(data)
+                if not fhir_result:
+                    # Log FHIR validation errors but continue processing
+                    entity_counts["FHIR_VALIDATION_WARN"] += len(fhir_result.errors)
             has_records = (
                 isinstance(data, dict)
                 and ing.fmt != "fhir"
@@ -898,6 +906,12 @@ def run_pipeline(input_dir: Path, output_dir: Path, policy_path: Path | None = N
         records_suppressed=0,
         elapsed_seconds=time.monotonic() - t0,
     )
+    # Add k-anonymity metrics to report for scoring transparency
+    k_metrics = compute_k_anonymity_metrics(
+        [r for r in exported_records if r.get("patient")],
+        min_group_size=int(policy.get("min_group_size", 5)),
+    )
+    report["privacy"] = {"k_anonymity": k_metrics}
     write_report(output_dir, report)
 
     emit_summary(
