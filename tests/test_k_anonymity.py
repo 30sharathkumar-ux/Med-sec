@@ -99,5 +99,24 @@ class TestKAnonymity(unittest.TestCase):
         self.assertEqual(len(classes), 1)
 
 
+    def test_tier3_district_suppression_for_small_classes(self):
+        """Tier 3 suppresses district when 20-yr class remains smaller than min_group_size."""
+        from rakshak.privacy.k_anonymity import compute_adaptive_profile_policies
+
+        profiles = {
+            f"p{i}": {"age": 32, "gender": "M", "district": "lucknow", "pin_prefix": "226", "rare_condition": False}
+            for i in range(6)
+        }
+        profiles["outlier"] = {
+            "age": 88, "gender": "F", "district": "hardoi", "pin_prefix": "241", "rare_condition": False,
+        }
+        policies, metrics = compute_adaptive_profile_policies(profiles, min_group_size=5, base_band_width=5)
+        self.assertFalse(policies["p0"]["suppress_district"])
+        self.assertTrue(policies["outlier"]["suppress_district"])
+        self.assertEqual(policies["outlier"]["age_band_width"], 20)
+        self.assertEqual(policies["outlier"]["pin_suppress_level"], 2)
+        self.assertEqual(metrics["districts_suppressed"], 1)
+
+
 if __name__ == "__main__":
     unittest.main()

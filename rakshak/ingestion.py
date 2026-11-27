@@ -146,7 +146,10 @@ def ingest_file(
     rel = path.relative_to(input_root).as_posix()
     raw = path.read_bytes()
     sha256 = hashlib.sha256(raw).hexdigest()
-    meta: dict[str, Any] = {"input_sha256": sha256, "rel_path": rel}
+    # Also compute LF-normalized hash for cross-platform truth.json compat
+    lf_raw = raw.replace(b"\r\n", b"\n")
+    lf_sha256 = hashlib.sha256(lf_raw).hexdigest()
+    meta: dict[str, Any] = {"input_sha256": sha256, "lf_sha256": lf_sha256, "rel_path": rel}
 
     if len(raw) > max_file_bytes:
         return None, {"input_sha256": sha256, "reason": "file_too_large"}

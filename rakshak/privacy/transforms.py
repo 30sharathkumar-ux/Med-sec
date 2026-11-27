@@ -117,7 +117,7 @@ _FREE_TEXT_AGE_LABEL_RE = re.compile(
     r"(?i)(\b(?:Age(?:/Sex)?|Umar|उम्र|आयु)\s*[:\-]\s*)(\d{1,3})(\s*(?:Yrs?|Years?|वर्ष|साल)?(?:\s*/\s*[MF])?)"
 )
 _FREE_TEXT_AGE_UNIT_RE = re.compile(
-    r"(?i)\b(\d{1,3})(\s*(?:Yrs?|Years?|वर्ष|साल)\s*/\s*[MF])\b"
+    r"(?i)(?<![-\d])\b(\d{1,3})(\s*(?:Yrs?|Years?|वर्ष|साल)\s*/\s*[MF])\b"
 )
 
 

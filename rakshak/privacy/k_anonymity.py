@@ -125,6 +125,12 @@ def compute_adaptive_profile_policies(
 ) -> tuple[dict[str, dict[str, Any]], dict[str, Any]]:
     """Compute per-patient adaptive generalization policy from resolved profiles.
 
+    Four-tier escalation protects small equivalence classes:
+      Tier 0 (standard):   5-year band, 3-digit PIN prefix, district kept
+      Tier 1 (moderate):  10-year band, 2-digit PIN, district kept
+      Tier 2 (high):      20-year band, PIN suppressed, district kept
+      Tier 3 (extreme):   20-year band, PIN suppressed, district suppressed
+
     Args:
         profiles: mapping patient_key -> {'age': int|None, 'gender': str,
                   'district': str, 'pin_prefix': str, 'rare_condition': bool}
@@ -142,11 +148,13 @@ def compute_adaptive_profile_policies(
             "at_risk_profiles": 0,
             "profiles_widened": 0,
             "pins_suppressed": 0,
+            "districts_suppressed": 0,
         }
 
     if len(profiles) < min_group_size:
         policies = {
-            pkey: {"age_band_width": base_band_width, "pin_suppress_level": 0}
+            pkey: {"age_band_width": base_band_width, "pin_suppress_level": 0,
+                   "suppress_district": False}
             for pkey in profiles
         }
         return policies, {
@@ -157,6 +165,7 @@ def compute_adaptive_profile_policies(
             "at_risk_proportion": 0.0,
             "profiles_widened": 0,
             "pins_suppressed": 0,
+            "districts_suppressed": 0,
             "suppression_needed": False,
         }
 
@@ -178,6 +187,7 @@ def compute_adaptive_profile_policies(
     policies: dict[str, dict[str, Any]] = {}
     widened_count = 0
     pin_suppressed_count = 0
+    district_suppressed_count = 0
 
     # First pass: widen age to 10-yr & suppress PIN to 2-digit if k < min_group_size or extreme/rare
     mid_classes: Counter[tuple] = Counter()
@@ -199,12 +209,12 @@ def compute_adaptive_profile_policies(
         # Drop PIN from mid_classes grouping when suppressed so district+gender+10yr forms larger cells
         mid_classes[(b_mid, pdata.get("gender", ""), pdata.get("district", ""))] += 1
 
-    # Second pass: escalate to 20-yr + full [PIN] suppression ONLY for:
+    # Second pass: escalate to 20-yr + full [PIN] suppression for:
     #   - extreme ages (>=80 or <5), OR
     #   - rare-condition profiles, OR
-    #   - singletons (count == 1) on (10yr_band, gender, district)
-    # This preserves 10-yr bands (0.8 utility) for multi-member classes while protecting high-risk outliers.
-    final_records: list[dict[str, Any]] = []
+    #   - small classes (count < min_group_size) on (10yr_band, gender, district)
+    tier2_classes: Counter[tuple] = Counter()
+    tier2_bands: dict[str, tuple[int, int]] = {}
     for pkey, pdata in profiles.items():
         age = pdata.get("age")
         band_w, pin_lvl = temp_bands[pkey]
@@ -213,24 +223,48 @@ def compute_adaptive_profile_policies(
         is_extreme = age is not None and (age >= 80 or age < 5)
         is_rare = bool(pdata.get("rare_condition", False))
 
-        if is_extreme or is_rare or mid_classes[qi_mid] <= 1:
+        if is_extreme or is_rare or mid_classes[qi_mid] < min_group_size:
             band_w = 20
             pin_lvl = 2
         elif pin_lvl > 0:
-            # Suppress PIN completely when k < min_group_size on 10-yr + district
             if mid_classes[qi_mid] < min_group_size:
                 pin_lvl = 2
+
+        tier2_bands[pkey] = (band_w, pin_lvl)
+        b20 = _band_for(age, band_w)
+        tier2_classes[(b20, pdata.get("gender", ""), pdata.get("district", ""))] += 1
+
+    # Third pass: suppress district for profiles that remain in classes smaller
+    # than min_group_size even after 20-yr banding.  This prevents unique re-id
+    # in small-district × extreme-age combinations while preserving district for
+    # the majority of profiles.
+    final_records: list[dict[str, Any]] = []
+    for pkey, pdata in profiles.items():
+        age = pdata.get("age")
+        band_w, pin_lvl = tier2_bands[pkey]
+        b20 = _band_for(age, band_w)
+        qi_t2 = (b20, pdata.get("gender", ""), pdata.get("district", ""))
+        suppress_district = False
+
+        if tier2_classes[qi_t2] < min_group_size and band_w >= 20:
+            suppress_district = True
 
         if band_w > base_band_width:
             widened_count += 1
         if pin_lvl > 0:
             pin_suppressed_count += 1
+        if suppress_district:
+            district_suppressed_count += 1
 
-        policies[pkey] = {"age_band_width": band_w, "pin_suppress_level": pin_lvl}
+        policies[pkey] = {
+            "age_band_width": band_w,
+            "pin_suppress_level": pin_lvl,
+            "suppress_district": suppress_district,
+        }
         final_records.append({
             "age": _band_for(age, band_w),
             "gender": pdata.get("gender", ""),
-            "district": pdata.get("district", ""),
+            "district": "" if suppress_district else pdata.get("district", ""),
             "pin": "" if pin_lvl >= 2 else (pdata.get("pin_prefix", "")[:2] + "****" if pin_lvl == 1 else pdata.get("pin_prefix", "")),
         })
 
@@ -238,5 +272,6 @@ def compute_adaptive_profile_policies(
     final_metrics["total_profiles"] = len(profiles)
     final_metrics["profiles_widened"] = widened_count
     final_metrics["pins_suppressed"] = pin_suppressed_count
+    final_metrics["districts_suppressed"] = district_suppressed_count
     final_metrics["at_risk_profiles"] = final_metrics.pop("at_risk_count", 0)
     return policies, final_metrics

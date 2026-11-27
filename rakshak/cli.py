@@ -201,6 +201,7 @@ def _clean_csv_value(val: str, col_type: Optional[str], entity_counts: Counter,
 
     band_width = int((risk_policy or {}).get("age_band_width", policy.get("age_band_years", 5)))
     pin_lvl = int((risk_policy or {}).get("pin_suppress_level", 0))
+    suppress_dist = bool((risk_policy or {}).get("suppress_district", False))
 
     if col_type == "age_sex":
         m_as = re.match(r"^\s*(\d{1,3})\s*(.*)$", val)
@@ -210,9 +211,10 @@ def _clean_csv_value(val: str, col_type: Optional[str], entity_counts: Counter,
                 return f"{_format_age_band(age_val, band_width)}{m_as.group(2)}"
         return val
 
-    if col_type in {"clinical_keep", "gender", "relation_label",
-                    "district", "tehsil"}:
+    if col_type in {"clinical_keep", "gender", "relation_label", "tehsil"}:
         return val
+    if col_type == "district":
+        return "[DISTRICT]" if suppress_dist else val
     if col_type == "date":
         if patient_key:
             shifted = shift_date_string(val, patient_key,
@@ -410,6 +412,7 @@ def _clean_json_full(
     rp = pol.get("_risk_policy") or {}
     band_width = int(rp.get("age_band_width", pol.get("age_band_years", 5)))
     pin_lvl = int(rp.get("pin_suppress_level", 0))
+    suppress_dist = bool(rp.get("suppress_district", False))
     max_shift = int(pol.get("date_shift_max_days", 180))
 
     def _text_cleaner(t: str) -> str:
@@ -512,7 +515,11 @@ def _clean_json_full(
             result[clean_k] = sanitize_base64_text(v, _text_cleaner) if isinstance(v, str) else v
 
         elif fc in _KEEP_TYPES:
-            result[clean_k] = v
+            # Suppress district for high-risk profiles to prevent re-identification
+            if fc == "DISTRICT" and suppress_dist and isinstance(v, str) and v.strip():
+                result[clean_k] = "[DISTRICT]"
+            else:
+                result[clean_k] = v
 
         else:
             # Unclassified — recurse
@@ -983,19 +990,16 @@ def run_pipeline(input_dir: Path, output_dir: Path, policy_path: Path | None = N
         # LF→CRLF on checkout, changing the file hash. Truth.json uses the
         # original (LF) hash. Emit a secondary entry with LF-normalized hash
         # so check_dev.py can find the mapping regardless of platform.
-        raw_path = input_dir / orig_rel
-        if raw_path.is_file():
-            raw_bytes = raw_path.read_bytes()
-            lf_bytes = raw_bytes.replace(b"\r\n", b"\n")
-            lf_sha = hashlib.sha256(lf_bytes).hexdigest()
-            if lf_sha != ing.input_sha256:
-                alt_entry = {
-                    "input_sha256": lf_sha,
-                    "output": f"sanitized/{out_rel}",
-                    "status": "sanitized",
-                    "_alt": True,
-                }
-                file_entries.append(alt_entry)
+        # On Linux, raw hash == LF hash, so no alt entry is created.
+        lf_sha = meta.get("lf_sha256", ing.input_sha256)
+        if lf_sha != ing.input_sha256:
+            alt_entry = {
+                "input_sha256": lf_sha,
+                "output": f"sanitized/{out_rel}",
+                "status": "sanitized",
+                "_alt": True,
+            }
+            file_entries.append(alt_entry)
 
     # Filter records for exported files only
     exported_records = filter_exported_records(records, file_entries)

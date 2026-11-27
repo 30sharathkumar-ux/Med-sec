@@ -103,6 +103,18 @@ class TestAdversarialA1ToA7(unittest.TestCase):
         d_shift = hmac.new(b"real-secret", b"shift|phone:9876543210", hashlib.sha256).digest()
         self.assertNotEqual(d_psn, d_shift)
 
+    def test_no_double_banding_in_free_text(self):
+        """Regression: band_free_text_ages must not double-band 20-year ranges into 40-40-59."""
+        out_en = band_free_text_ages("Age/Sex: 42 Yrs/M", band_width=20)
+        self.assertEqual(out_en, "Age/Sex: 40-59 Yrs/M")
+        self.assertNotIn("40-40-59", out_en)
+
+        out_20 = band_free_text_ages("Age: 25 Yrs/M", band_width=20)
+        self.assertEqual(out_20, "Age: 20-39 Yrs/M")
+
+        out_hi = band_free_text_ages("उम्र: 42 वर्ष/M", band_width=20)
+        self.assertEqual(out_hi, "उम्र: 40-59 वर्ष/M")
+
     def test_a7_cross_release_unlinkable_and_same_secret_deterministic(self):
         """A7: Different secrets yield different pseudonyms; same secret yields identical output."""
         p1 = generate_pseudonym("aadhaar:123456789012", b"release-1")
