@@ -49,6 +49,7 @@ from rakshak.linkage.resolver import (
 from rakshak.privacy.pseudonymize import generate_pseudonym
 from rakshak.privacy.transforms import (
     age_band,
+    band_free_text_ages,
     compute_date_shift,
     generalize_pin,
     generalize_village,
@@ -77,7 +78,11 @@ from rakshak.detection.hidden_surfaces import (
     sanitize_embedded_base64,
 )
 from rakshak.privacy.fhir_validator import validate_fhir_input, validate_fhir_output
-from rakshak.privacy.k_anonymity import compute_k_anonymity_metrics
+from rakshak.privacy.k_anonymity import (
+    compute_adaptive_profile_policies,
+    compute_k_anonymity_metrics,
+    suppress_pin,
+)
 
 _ALPHABET = "0123456789ABCDEFGHJKMNPQRSTVWXYZ"
 
@@ -173,19 +178,39 @@ _GENERALIZE_COLUMNS = {'age', 'dob', 'village', 'pin', 'address', 'house', 'land
 _REPLACE_COLUMNS = {'name', 'phone', 'aadhaar', 'abha', 'mrn', 'email', 'pan', 'insurance', 'relative'}
 
 
-def _clean_text(text: str, entity_counts: Counter, pseudonym_str: str = '') -> str:
+def _format_age_band(age_val: int, band_width: int) -> str:
+    """Format an age into a truthful band (with 80+ cap when widened)."""
+    if age_val >= 80 and band_width >= 10:
+        return "80+"
+    return age_band(age_val, band_width)
+
+
+def _clean_text(text: str, entity_counts: Counter, pseudonym_str: str = '',
+                age_band_width: int = 5) -> str:
     """Clean text with the full multilingual detection engine."""
-    return _clean_text_full(text, entity_counts)
+    return _clean_text_full(text, entity_counts, age_band_width=age_band_width)
 
 
 def _clean_csv_value(val: str, col_type: Optional[str], entity_counts: Counter,
                      pseudonym_str: str, policy: dict, patient_key: Optional[str],
-                     row_district: str = "") -> str:
+                     row_district: str = "",
+                     risk_policy: Optional[dict[str, Any]] = None) -> str:
     """Clean a CSV cell based on its column classification."""
     if not val.strip():
         return val
 
-    if col_type in {"clinical_keep", "gender", "age_sex", "relation_label",
+    band_width = int((risk_policy or {}).get("age_band_width", policy.get("age_band_years", 5)))
+    pin_lvl = int((risk_policy or {}).get("pin_suppress_level", 0))
+
+    if col_type == "age_sex":
+        m_as = re.match(r"^\s*(\d{1,3})\s*(.*)$", val)
+        if m_as:
+            age_val = int(m_as.group(1))
+            if 0 <= age_val <= 120:
+                return f"{_format_age_band(age_val, band_width)}{m_as.group(2)}"
+        return val
+
+    if col_type in {"clinical_keep", "gender", "relation_label",
                     "district", "tehsil"}:
         return val
     if col_type == "date":
@@ -237,8 +262,7 @@ def _clean_csv_value(val: str, col_type: Optional[str], entity_counts: Counter,
         if col_type == 'age':
             try:
                 age_val = int(re.match(r'(\d+)', val).group(1))
-                band_width = int(policy.get('age_band_years', 5))
-                return age_band(age_val, band_width)
+                return _format_age_band(age_val, band_width)
             except (ValueError, AttributeError):
                 return val
         elif col_type == 'dob':
@@ -255,7 +279,8 @@ def _clean_csv_value(val: str, col_type: Optional[str], entity_counts: Counter,
             return generalize_village(val, row_district)
         elif col_type == 'pin':
             entity_counts['PIN'] += 1
-            return generalize_pin(val)
+            gen_pin = generalize_pin(val)
+            return suppress_pin(gen_pin, level=pin_lvl) if pin_lvl > 0 else gen_pin
         elif col_type == 'address':
             entity_counts['ADDRESS'] += 1
             return '[ADDRESS]'
@@ -274,6 +299,7 @@ def _clean_text_full(
     text: str,
     entity_counts: Counter[str],
     known_names: set[str] | None = None,
+    age_band_width: int = 5,
 ) -> str:
     """Comprehensive PII detection and redaction using all detection modules."""
     if not text or not text.strip():
@@ -286,7 +312,7 @@ def _clean_text_full(
     # 0. Decode & sanitize any embedded Base64 payloads before span scanning
     text = sanitize_embedded_base64(
         text,
-        lambda t: _clean_text_full(t, entity_counts, known_names),
+        lambda t: _clean_text_full(t, entity_counts, known_names, age_band_width=age_band_width),
     )
 
     all_spans: list[tuple[int, int, str]] = []
@@ -308,10 +334,11 @@ def _clean_text_full(
     for m in _DATED_LABEL_RE.finditer(text):
         all_spans.append((m.start(1), m.end(1), "DATE"))
 
-    if not all_spans:
-        return text
+    if all_spans:
+        text = apply_span_replacements(text, all_spans, entity_counts)
 
-    return apply_span_replacements(text, all_spans, entity_counts)
+    # 6. Band explicit free-text age labels (e.g. 'Age/Sex: 39 Yrs/M' -> 'Age/Sex: 35-39 Yrs/M')
+    return band_free_text_ages(text, band_width=age_band_width)
 
 
 # ==================== JSON pre-scan for names =============================
@@ -380,11 +407,13 @@ def _clean_json_full(
     result: dict[str, Any] = {}
     used_keys: set[str] = set()
     pol = policy or {}
-    band_width = int(pol.get("age_band_years", 5))
+    rp = pol.get("_risk_policy") or {}
+    band_width = int(rp.get("age_band_width", pol.get("age_band_years", 5)))
+    pin_lvl = int(rp.get("pin_suppress_level", 0))
     max_shift = int(pol.get("date_shift_max_days", 180))
 
     def _text_cleaner(t: str) -> str:
-        return _clean_text_full(t, entity_counts, doc_names)
+        return _clean_text_full(t, entity_counts, doc_names, age_band_width=band_width)
 
     # Use FHIR resourceType as effective parent context
     resource_type = value.get("resourceType", "")
@@ -454,16 +483,17 @@ def _clean_json_full(
 
         elif fc == "AGE":
             if isinstance(v, (int, float)) and not isinstance(v, bool):
-                result[clean_k] = age_band(int(v), band_width)
+                result[clean_k] = _format_age_band(int(v), band_width)
             elif isinstance(v, str) and v.strip():
                 m_age = re.match(r"^\s*(\d+)", v)
-                result[clean_k] = age_band(int(m_age.group(1)), band_width) if m_age else v
+                result[clean_k] = _format_age_band(int(m_age.group(1)), band_width) if m_age else v
             else:
                 result[clean_k] = v
 
         elif fc == "PIN":
             if isinstance(v, (str, int)) and str(v).strip():
-                result[clean_k] = generalize_pin(str(v))
+                gen_pin = generalize_pin(str(v))
+                result[clean_k] = suppress_pin(gen_pin, level=pin_lvl) if pin_lvl > 0 else gen_pin
                 entity_counts["PIN"] += 1
             else:
                 result[clean_k] = v
@@ -561,6 +591,7 @@ def _process_csv(
     cluster_keys: dict[str, Optional[str]],
     secret: bytes,
     orig_rel: str | None = None,
+    risk_policies: Optional[dict[str, dict[str, Any]]] = None,
 ) -> str:
     """Process a CSV/TSV file: detect PII, link records, apply privacy transforms."""
     header, body = ing.parsed
@@ -604,12 +635,14 @@ def _process_csv(
         patient_key = cluster_keys.get(record_id)
         psn = generate_pseudonym(patient_key, secret) if patient_key else None
         row_district = row[district_col].strip() if (district_col is not None and district_col < len(row)) else ""
+        rp = (risk_policies or {}).get(patient_key or "")
 
         cleaned_row = []
         for col_idx, cell in enumerate(row):
             ct = col_types[col_idx] if col_idx < len(col_types) else None
             cleaned = _clean_csv_value(cell, ct, entity_counts,
-                                       psn or '', policy, patient_key, row_district)
+                                       psn or '', policy, patient_key, row_district,
+                                       risk_policy=rp)
             # Inject pseudonym into patient_ref/UHID column
             if psn and col_idx == patient_ref_col:
                 cleaned = psn
@@ -638,6 +671,7 @@ def _process_json(
     cluster_keys: dict[str, Optional[str]],
     secret: bytes,
     orig_rel: str | None = None,
+    risk_policies: Optional[dict[str, dict[str, Any]]] = None,
 ) -> str:
     """Process a JSON/FHIR file: detect PII, link records, apply privacy transforms."""
     data = ing.parsed
@@ -655,8 +689,10 @@ def _process_json(
         record_id = f"sanitized/{lookup_rel}::doc"
         patient_key = cluster_keys.get(record_id)
         psn = generate_pseudonym(patient_key, secret) if patient_key else None
+        rp = (risk_policies or {}).get(patient_key or "")
+        pol_with_risk = {**policy, "_risk_policy": rp} if rp else policy
 
-        cleaned = _clean_json_value(data, entity_counts, psn or '', policy,
+        cleaned = _clean_json_value(data, entity_counts, psn or '', pol_with_risk,
                                      patient_key)
 
         # Inject pseudonym for FHIR bundles
@@ -682,9 +718,11 @@ def _process_json(
                     record_id = f"sanitized/{lookup_rel}::/{pk}/{idx}"
                     patient_key = cluster_keys.get(record_id)
                     psn = generate_pseudonym(patient_key, secret) if patient_key else None
+                    rp = (risk_policies or {}).get(patient_key or "")
+                    pol_with_risk = {**policy, "_risk_policy": rp} if rp else policy
 
                     cleaned_item = _clean_json_value(item, entity_counts, psn or '',
-                                                      policy, patient_key, '')
+                                                      pol_with_risk, patient_key, '')
                     if psn and isinstance(cleaned_item, dict):
                         cleaned_item["patient_ref"] = psn
 
@@ -710,6 +748,7 @@ def _process_text(
     cluster_keys: dict[str, Optional[str]],
     secret: bytes,
     orig_rel: str | None = None,
+    risk_policies: Optional[dict[str, dict[str, Any]]] = None,
 ) -> str:
     """Process a text file: detect PII, inject pseudonym."""
     out_rel = ing.rel_path
@@ -717,8 +756,10 @@ def _process_text(
     record_id = f"sanitized/{lookup_rel}::doc"
     patient_key = cluster_keys.get(record_id)
     psn = generate_pseudonym(patient_key, secret) if patient_key else None
+    rp = (risk_policies or {}).get(patient_key or "")
+    band_w = int((rp or {}).get("age_band_width", policy.get("age_band_years", 5)))
 
-    text = _clean_text(ing.parsed, entity_counts, psn or '')
+    text = _clean_text(ing.parsed, entity_counts, psn or '', age_band_width=band_w)
 
     # Inject pseudonym at the top of the document
     if psn:
@@ -827,6 +868,61 @@ def run_pipeline(input_dir: Path, output_dir: Path, policy_path: Path | None = N
     resolver.resolve()
     cluster_keys = resolver.get_all_cluster_keys()
 
+    # Extract per-patient diagnosis tokens to identify rare conditions (<= 2 patients)
+    patient_conditions: dict[str, set[str]] = {}
+    for ing, _meta in ingested_files:
+        if ing.fmt in ("csv", "tsv"):
+            hdr, body = ing.parsed
+            diag_cols = [i for i, c in enumerate(hdr) if any(w in c.lower() for w in ("diagnosis", "procedure"))]
+            if diag_cols:
+                for idx, row in enumerate(body):
+                    pkey = cluster_keys.get(f"sanitized/{ing.rel_path}::row:{idx}")
+                    if pkey:
+                        for dc in diag_cols:
+                            if dc < len(row) and row[dc].strip():
+                                patient_conditions.setdefault(pkey, set()).add(row[dc].strip().lower())
+        elif ing.fmt == "text":
+            pkey = cluster_keys.get(f"sanitized/{ing.rel_path}::doc")
+            if pkey:
+                for m_d in re.finditer(r"(?i)Diagnosis\s*[:\-]\s*([^\n]+)", ing.parsed):
+                    patient_conditions.setdefault(pkey, set()).add(m_d.group(1).strip().lower())
+
+    cond_freq: Counter[str] = Counter()
+    for conds in patient_conditions.values():
+        for c in conds:
+            cond_freq[c] += 1
+    rare_conds = {c for c, cnt in cond_freq.items() if cnt <= 2}
+
+    # Build per-patient QI profiles and compute adaptive k-anonymity policies
+    patient_profiles: dict[str, dict[str, Any]] = {}
+    for ev in resolver._records:
+        pkey = cluster_keys.get(ev.record_id)
+        if not pkey:
+            continue
+        prof = patient_profiles.setdefault(
+            pkey, {
+                "age": None,
+                "gender": "",
+                "district": "",
+                "pin_prefix": "",
+                "rare_condition": bool(patient_conditions.get(pkey, set()) & rare_conds),
+            }
+        )
+        if prof["age"] is None and ev.age is not None:
+            prof["age"] = ev.age
+        if not prof["gender"] and ev.gender:
+            prof["gender"] = ev.gender
+        if not prof["district"] and ev.district:
+            prof["district"] = ev.district.lower()
+        if not prof["pin_prefix"] and ev.pin and len(ev.pin) >= 3:
+            prof["pin_prefix"] = ev.pin[:3]
+
+    risk_policies, k_metrics = compute_adaptive_profile_policies(
+        patient_profiles,
+        min_group_size=int(policy.get("min_group_size", 5)),
+        base_band_width=int(policy.get("age_band_years", 5)),
+    )
+
     # -----------------------------------------------------------------------
     # Pass 2: PII Detection + Pseudonymization + Privacy + Export
     # -----------------------------------------------------------------------
@@ -855,19 +951,22 @@ def run_pipeline(input_dir: Path, output_dir: Path, policy_path: Path | None = N
         # Process based on format (pass orig_rel for cluster_keys lookup)
         if ing.fmt in ("csv", "tsv"):
             result_text = _process_csv(ing, records, entity_counts, resolver,
-                                       policy, cluster_keys, secret, orig_rel=orig_rel)
+                                       policy, cluster_keys, secret, orig_rel=orig_rel,
+                                       risk_policies=risk_policies)
             records_generalized += sum(1 for r in records
                                        if r.get("file") == f"sanitized/{out_rel}"
                                        and r.get("patient"))
         elif ing.fmt in ("json", "fhir"):
             result_text = _process_json(ing, records, entity_counts, resolver,
-                                        policy, cluster_keys, secret, orig_rel=orig_rel)
+                                        policy, cluster_keys, secret, orig_rel=orig_rel,
+                                        risk_policies=risk_policies)
             records_generalized += sum(1 for r in records
                                        if r.get("file") == f"sanitized/{out_rel}"
                                        and r.get("patient"))
         else:
             result_text = _process_text(ing, records, entity_counts, resolver,
-                                        policy, cluster_keys, secret, orig_rel=orig_rel)
+                                        policy, cluster_keys, secret, orig_rel=orig_rel,
+                                        risk_policies=risk_policies)
 
         dest = san_dir / out_rel
         dest.parent.mkdir(parents=True, exist_ok=True)
@@ -912,11 +1011,7 @@ def run_pipeline(input_dir: Path, output_dir: Path, policy_path: Path | None = N
         records_suppressed=0,
         elapsed_seconds=time.monotonic() - t0,
     )
-    # Add k-anonymity metrics to report for scoring transparency
-    k_metrics = compute_k_anonymity_metrics(
-        [r for r in exported_records if r.get("patient")],
-        min_group_size=int(policy.get("min_group_size", 5)),
-    )
+    # Add measured post-generalization profile k-anonymity metrics to report
     report["privacy"] = {"k_anonymity": k_metrics}
     write_report(output_dir, report)
 

@@ -113,6 +113,36 @@ def age_band(age: int, band_width: int = 5) -> str:
     return f"{lo}-{hi}"
 
 
+_FREE_TEXT_AGE_LABEL_RE = re.compile(
+    r"(?i)(\b(?:Age(?:/Sex)?|Umar|उम्र|आयु)\s*[:\-]\s*)(\d{1,3})(\s*(?:Yrs?|Years?|वर्ष|साल)?(?:\s*/\s*[MF])?)"
+)
+_FREE_TEXT_AGE_UNIT_RE = re.compile(
+    r"(?i)\b(\d{1,3})(\s*(?:Yrs?|Years?|वर्ष|साल)\s*/\s*[MF])\b"
+)
+
+
+def band_free_text_ages(text: str, band_width: int = 5) -> str:
+    """Replace exact ages in explicit age/sex clinical labels with truthful age bands.
+
+    Preserves medications, dosages (e.g. '650 mg', '1-0-1', 'x 5 days'), and vitals.
+    """
+    if not text:
+        return text
+
+    def _replace_age(m: re.Match[str], has_prefix: bool) -> str:
+        raw_age = int(m.group(2) if has_prefix else m.group(1))
+        if not (0 <= raw_age <= 120):
+            return m.group(0)
+        banded = "80+" if (raw_age >= 80 and band_width >= 10) else age_band(raw_age, band_width)
+        if has_prefix:
+            return f"{m.group(1)}{banded}{m.group(3)}"
+        return f"{banded}{m.group(2)}"
+
+    out = _FREE_TEXT_AGE_LABEL_RE.sub(lambda m: _replace_age(m, True), text)
+    out = _FREE_TEXT_AGE_UNIT_RE.sub(lambda m: _replace_age(m, False), out)
+    return out
+
+
 def age_band_contains(band: str, true_age: int) -> bool:
     """Verify that an age band contains the true age."""
     m = re.match(r'(\d+)\s*-\s*(\d+)', band)
