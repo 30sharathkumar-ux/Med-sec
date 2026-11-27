@@ -1,5 +1,5 @@
 [submission]
-name  = "team-raksha"
+name  = "POINT_BLANK"
 setup = "pip install -r requirements.txt"
 run   = "python main.py --input {input} --output {output}"
 
