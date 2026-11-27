@@ -1,4 +1,4 @@
-"""Generate a crisp, exact 2-page competition Project Brief PDF for RAKSHA."""
+"""Generate the exact 2-page RAKSHA Project Brief PDF matching the user's final layout."""
 from pathlib import Path
 from reportlab.lib import colors
 from reportlab.lib.pagesizes import A4
@@ -7,170 +7,229 @@ from reportlab.lib.units import mm
 from reportlab.platypus import (
     SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, PageBreak, HRFlowable
 )
-from reportlab.graphics.shapes import Drawing, Rect, String, Line, Polygon
 
 ROOT = Path(__file__).resolve().parent.parent.parent
 OUT_PDF = ROOT / "brief" / "PROJECT_BRIEF.pdf"
 
-NAVY = colors.HexColor("#0F2942")
-TEAL = colors.HexColor("#0D7377")
+NAVY = colors.HexColor("#102A43")
+BLUE = colors.HexColor("#243B53")
+ACCENT = colors.HexColor("#334E68")
 SLATE = colors.HexColor("#334155")
-MUTED = colors.HexColor("#64748B")
-BG_LIGHT = colors.HexColor("#F1F5F9")
+MUTED = colors.HexColor("#627D98")
+BG_LIGHT = colors.HexColor("#F0F4F8")
+BG_CALLOUT = colors.HexColor("#E6EFF6")
 BORDER = colors.HexColor("#CBD5E1")
 WHITE = colors.white
 
 
-def build_arch_diagram() -> Drawing:
-    """Clean vector architecture diagram for Page 1."""
-    d = Drawing(495, 76)
-    boxes = [
-        (4, 14, 118, 52, NAVY, "1. SENTINEL", "UTF-8/16/cp1252 sniff", "Depth <= 128, Magic bytes", "Fail-closed quarantine"),
-        (136, 14, 160, 52, TEAL, "2. IDENTITY GUARD", "EN/HI/Hinglish PII + Hidden", "Dr.+Qual, Eponym, Dose shields", "Phonetic + Prefix linkage"),
-        (310, 14, 122, 52, NAVY, "3. VAULT", "HMAC psn| / shift| / fname|", "5-yr age, District, PIN***", "+-180d shift (LOS kept)"),
-    ]
-    for x, y, w, h, col, title, l1, l2, l3 in boxes:
-        d.add(Rect(x, y, w, h, rx=4, ry=4, fillColor=BG_LIGHT, strokeColor=col, strokeWidth=1.2))
-        d.add(Rect(x, y + h - 14, w, 14, rx=2, ry=2, fillColor=col, strokeColor=col, strokeWidth=0))
-        d.add(String(x + 5, y + h - 10.5, title, fontName="Helvetica-Bold", fontSize=7.5, fillColor=WHITE))
-        d.add(String(x + 5, y + 27, l1, fontName="Helvetica", fontSize=6.6, fillColor=SLATE))
-        d.add(String(x + 5, y + 17, l2, fontName="Helvetica", fontSize=6.6, fillColor=SLATE))
-        d.add(String(x + 5, y + 7, l3, fontName="Helvetica", fontSize=6.6, fillColor=SLATE))
-
-    # Arrows
-    for ax1, ax2 in [(122, 136), (296, 310), (432, 444)]:
-        d.add(Line(ax1, 40, ax2 - 3, 40, strokeColor=TEAL, strokeWidth=1.4))
-        d.add(Polygon([ax2 - 4, 43, ax2, 40, ax2 - 4, 37], fillColor=TEAL, strokeColor=TEAL))
-
-    # Output box
-    d.add(Rect(444, 14, 48, 52, rx=4, ry=4, fillColor=colors.HexColor("#E6FFFA"), strokeColor=TEAL, strokeWidth=1.2))
-    d.add(String(448, 49, "OUTPUT", fontName="Helvetica-Bold", fontSize=7, fillColor=TEAL))
-    d.add(String(448, 37, "sanitized/", fontName="Helvetica", fontSize=6.4, fillColor=SLATE))
-    d.add(String(448, 27, "records.jsonl", fontName="Helvetica", fontSize=6.4, fillColor=SLATE))
-    d.add(String(448, 17, "report.json", fontName="Helvetica", fontSize=6.4, fillColor=SLATE))
-    return d
+def _draw_footer(canvas, doc):
+    canvas.saveState()
+    canvas.setStrokeColor(BORDER)
+    canvas.setLineWidth(0.5)
+    canvas.line(15 * mm, 13 * mm, A4[0] - 15 * mm, 13 * mm)
+    canvas.setFont("Helvetica", 7.5)
+    canvas.setFillColor(MUTED)
+    canvas.drawString(15 * mm, 9 * mm, "RAKSHA \u00b7 Yugaantar DevForge 2026 \u00b7 Track 3: Secret Wards")
+    canvas.drawRightString(A4[0] - 15 * mm, 9 * mm, f"Page {doc.page}")
+    canvas.restoreState()
 
 
 def build_pdf():
     doc = SimpleDocTemplate(
         str(OUT_PDF),
         pagesize=A4,
-        leftMargin=14 * mm,
-        rightMargin=14 * mm,
-        topMargin=11 * mm,
-        bottomMargin=11 * mm,
-        title="RAKSHA - Track 3 Secret Wards Project Brief",
-        author="Team RAKSHA",
+        leftMargin=15 * mm,
+        rightMargin=15 * mm,
+        topMargin=13 * mm,
+        bottomMargin=17 * mm,
+        title="RAKSHA - Project Brief",
+        author="POINT_BLANK",
     )
 
     styles = getSampleStyleSheet()
-    s_title = ParagraphStyle("Title", parent=styles["Normal"], fontName="Helvetica-Bold", fontSize=15, leading=18, textColor=NAVY, spaceAfter=2)
-    s_sub = ParagraphStyle("Sub", parent=styles["Normal"], fontName="Helvetica-Bold", fontSize=9, leading=11.5, textColor=TEAL, spaceAfter=4)
-    s_meta = ParagraphStyle("Meta", parent=styles["Normal"], fontName="Helvetica", fontSize=8, leading=10, textColor=MUTED, spaceAfter=5)
-    s_h2 = ParagraphStyle("H2", parent=styles["Normal"], fontName="Helvetica-Bold", fontSize=9.5, leading=12, textColor=NAVY, spaceBefore=5, spaceAfter=2.5)
-    s_body = ParagraphStyle("Body", parent=styles["Normal"], fontName="Helvetica", fontSize=8.1, leading=10.8, textColor=SLATE, spaceAfter=3)
-    s_bullet = ParagraphStyle("Bullet", parent=s_body, leftIndent=9, firstLineIndent=-6, spaceAfter=2.2)
+    s_title = ParagraphStyle("Title", parent=styles["Normal"], fontName="Helvetica-Bold", fontSize=18, leading=21, textColor=NAVY, spaceAfter=2)
+    s_sub = ParagraphStyle("Sub", parent=styles["Normal"], fontName="Helvetica-Bold", fontSize=8.5, leading=11, textColor=ACCENT, spaceAfter=2)
+    s_meta = ParagraphStyle("Meta", parent=styles["Normal"], fontName="Helvetica-Bold", fontSize=7.8, leading=10, textColor=MUTED, spaceAfter=4)
+    s_h2 = ParagraphStyle("H2", parent=styles["Normal"], fontName="Helvetica-Bold", fontSize=10, leading=13, textColor=NAVY, spaceBefore=6, spaceAfter=3)
+    s_body = ParagraphStyle("Body", parent=styles["Normal"], fontName="Helvetica", fontSize=8.2, leading=11, textColor=SLATE, spaceAfter=3.5)
+    s_bullet = ParagraphStyle("Bullet", parent=s_body, leftIndent=8, firstLineIndent=-6, spaceAfter=2.5)
+    s_cell = ParagraphStyle("Cell", parent=styles["Normal"], fontName="Helvetica", fontSize=7.4, leading=9.6, textColor=SLATE)
+    s_cell_b = ParagraphStyle("CellB", parent=s_cell, fontName="Helvetica-Bold", textColor=NAVY)
 
     story = []
 
     # ==================== PAGE 1 ====================
-    story.append(Paragraph("RAKSHA: Offline Multilingual Medical Data Privacy Firewall", s_title))
-    story.append(Paragraph("Adversarial Re-identification Resistance with Clinical-Utility Preservation", s_sub))
-    story.append(Paragraph("Yugaantar DevForge 2026 · Track 3: Secret Wards · Team: team-raksha · CPU-Only / Offline / Zero-LLM", s_meta))
-    story.append(HRFlowable(width="100%", thickness=1, color=TEAL, spaceAfter=5))
+    story.append(Paragraph("RAKSHA", s_title))
+    story.append(Paragraph("OFFLINE MULTILINGUAL MEDICAL DATA PRIVACY FIREWALL", s_sub))
+    story.append(Paragraph("Yugaantar DevForge 2026 \u00b7 Track 3: Secret Wards | Adversarial Re-identification Resistance with Clinical-Utility Preservation", s_meta))
+    story.append(HRFlowable(width="100%", thickness=1, color=NAVY, spaceAfter=4))
 
-    story.append(Paragraph("1. Problem Statement & Proposed Solution", s_h2))
+    story.append(Paragraph("1. The Challenge", s_h2))
     story.append(Paragraph(
-        "Clinical records aggregated across Indian hospitals mix English, Devanagari Hindi, and Hinglish text with heterogeneous schemas "
-        "(CSV, TSV, JSON, FHIR R4) and hidden PII surfaces (filenames, CSV headers, JSON keys, metadata paths, Base64 payloads). "
-        "Naive redaction destroys clinical utility (stripping dosages, eponyms, and clinician credentials), while weak pseudonymization "
-        "fails against linkage attacks using voter registries and partial visit facts. <b>RAKSHA</b> is a deterministic, CPU-only, "
-        "offline privacy firewall that pairs multilingual context-aware detection with conservative cross-hospital identity resolution "
-        "and domain-separated HMAC-SHA256 privacy transformations.", s_body
+        "Secret Wards asks teams to build an <b>offline, CPU-only, LLM-free privacy firewall</b> for synthetic Indian hospital records from four hospital "
+        "systems, spanning English, Hindi and Hinglish. The system must remove personal information, preserve medically useful values exactly, link "
+        "the same patient across languages/files/hospitals without false merges, and prevent leaks in outputs, logs, temporary files and errors.", s_body
+    ))
+    story.append(Paragraph(
+        "The hidden attacker may combine quasi-identifiers\u2014age, village, PIN, visit date, rare diagnosis and length of stay\u2014with outside population "
+        "knowledge. Removing names alone is not sufficient.", s_body
     ))
 
-    story.append(Paragraph("2. Unique Selling Proposition (USP)", s_h2))
-    story.append(Paragraph("• <b>Zero-Loss Clinical Preservation:</b> Protects clinician credentials including qualifications (<i>Dr. Ramesh Srivastava (MD Medicine)</i>, <i>Dr. Anil Kumar MD Cardiology</i>) while still redacting genuine patient names like <i>Md. Shahid</i>, preserving <b>4,855 / 4,855 (100.0%)</b> medical probes.", s_bullet))
-    story.append(Paragraph("• <b>True Multilingual & Hidden-Channel Coverage:</b> Handles Latin, Devanagari, and Hinglish names, kinship frames (<i>S/o, D/o, W/o, पत्नी</i>), and scrubs filenames, CSV headers, JSON keys, metadata paths, and Base64 attachments (<b>0 / 3,230 leaked</b>).", s_bullet))
-    story.append(Paragraph("• <b>Precision-First Cross-Hospital Linkage:</b> Dynamic MRN issuer-prefix extraction (<i>[A-Z]{2,6}[-/]</i>, zero hardcoded hospital aliases) and phonetic blocking achieve <b>1.00 precision / 1.00 recall / F0.5 1.00</b> with <b>0 wrong merges</b>.", s_bullet))
-
-    story.append(Paragraph("3. Architecture & End-to-End Workflow", s_h2))
-    story.append(build_arch_diagram())
-    story.append(Spacer(1, 3))
-    story.append(Paragraph(
-        "<b>Two-Pass Execution:</b> <b>Pass 1 (SENTINEL + Evidence)</b> discovers files deterministically, detects UTF-8/BOM/UTF-16/cp1252 encodings, "
-        "quarantines malformed/binary/XML/deeply-nested (>128) files fail-closed, validates FHIR R4 Bundles, and extracts linkage evidence. "
-        "<b>Pass 2 (IDENTITY GUARD + VAULT)</b> resolves clusters via Union-Find, applies context-shielded PII redaction across all surfaces, "
-        "injects keyed <i>PSN-XXXXXX</i> pseudonyms, applies per-patient date shifts and quasi-identifier generalization, and emits "
-        "<i>sanitized/</i>, <i>records.jsonl</i>, and <i>report.json</i>.", s_body
-    ))
-
-    story.append(Paragraph("4. Key Technical Innovations", s_h2))
-    story.append(Paragraph("• <b>Cryptographic Domain Separation:</b> Separate HMAC-SHA256 domains (<i>b\"psn|\"</i>, <i>b\"shift|\"</i>, <i>b\"fname|\"</i>) prevent cross-oracle correlation and ensure secret-keyed unlinkability across releases.", s_bullet))
-    story.append(Paragraph("• <b>ReDoS-Safe Linear Scanning:</b> Bounded regex quantifiers eliminate catastrophic backtracking on 100 KB+ single-line clinical notes while maintaining O(N) throughput.", s_bullet))
-    story.append(Paragraph("• <b>Dynamic Issuer-Prefix Grouping:</b> Extracts hospital issuer prefixes dynamically from MRNs/UHIDs and file stems without hardcoding practice hospital names.", s_bullet))
-
-    story.append(PageBreak())
-
-    # ==================== PAGE 2 ====================
-    story.append(Paragraph("5. Privacy Threat Model & Adversarial Resistance", s_h2))
-    story.append(Paragraph(
-        "Under the Secret Wards threat model (<i>docs/ATTACKS.md</i>), an adversary holds a population registry (<i>registry.csv</i>) and partial "
-        "visit facts (<i>known_facts.jsonl</i>). RAKSHA defends across all seven attack vectors: <b>A1 Direct Exposure</b> (0/3,230 PII and 0/4 canaries "
-        "surviving), <b>A2–A4 Linkage & Profile Aggregation</b> (village→district rollup, 5-year age bands, 3-digit PIN prefixes, house/landmark "
-        "suppression; 0/240 registry villages surviving in output), <b>A5 Targeted Attack</b> (per-patient ±180-day HMAC date shifts defeat global "
-        "shift recovery while keeping exact Length of Stay), and <b>A6–A7 Pseudonym Inversion & Cross-Release</b> (keyed HMAC-SHA256 with domain separation). "
-        "<i>Note:</i> Exact official A1–A7 attack probabilities and B³ F1 require the organizer's <i>raksha_eval</i> runner (not bundled in this repo).", s_body
-    ))
-
-    story.append(Paragraph("6. Privacy–Utility Tradeoff & Security Design", s_h2))
-    story.append(Paragraph(
-        "<b>Tradeoff:</b> 5-year age bands, district-level geography, and ±180-day per-patient shifts trade fine demographic granularity to block "
-        "calendar and Sweeney-style linkage while preserving <b>100.0%</b> of clinical probes and exact LOS intervals (e.g., 5-, 10-, and 12-day stays). "
-        "<b>Security:</b> <i>RAKSHA_SECRET</i> is read from the environment only, never cached or logged; stdout emits aggregate counts only; zero "
-        "<i>tempfile</i> usage; malformed inputs are quarantined in <i>report.json</i> with zero raw copies.", s_body
-    ))
-
-    story.append(Paragraph("7. Verified Evaluation & Performance Results (200-File Practice Set)", s_h2))
-    data = [
-        ["Evaluation Metric", "Source / Command", "Verified Result", "Status"],
-        ["Personal Data Leaked", "check_dev.py (WSL2 & Win)", "0 / 3,230 (0.0% across EN/HI/Hinglish & all 6 channels)", "PASS"],
-        ["Canary Leakage", "check_dev.py", "0 / 4 planted canaries", "PASS"],
-        ["Medical Values Kept", "check_dev.py", "4,855 / 4,855 (100.0%, incl. MD qualifications)", "PASS"],
-        ["Identity Linkage", "check_dev.py", "Precision 1.00 | Recall 1.00 | F0.5 1.00 | 0 wrong merges", "PASS"],
-        ["Output Contract & Audit", "validate_output.py / check_submission.py", "CONTRACT OK | READY TO SUBMIT (192 san + 8 quar)", "PASS"],
-        ["Automated Test Suite", "pytest tests/ -q", "199 passed in 10.47s (unit, adversarial, FHIR, recall)", "PASS"],
-        ["Compute & Memory", "taskset -c 0,1 (WSL2) / report.json", "6.64s single-run (11.6s 3-run) | 31.0 MB peak RSS", "PASS"],
-        ["Official A1–A7 & B³ F1", "raksha_eval (not in repo)", "Not evaluated locally (proxy checks pass)", "UNVERIFIED"],
+    story.append(Paragraph("2. RAKSHA's Response to the Six Challenge Traps", s_h2))
+    traps = [
+        [Paragraph("<b>Track requirement</b>", ParagraphStyle("TH", parent=s_cell_b, textColor=WHITE)),
+         Paragraph("<b>RAKSHA design response</b>", ParagraphStyle("TH", parent=s_cell_b, textColor=WHITE))],
+        [Paragraph("<b>Language</b> \u2014 English, Hindi, Hinglish; aliases and transliteration", s_cell),
+         Paragraph("Script-aware rules, Devanagari\u2013Latin normalization, name patterns and phonetic blocking.", s_cell)],
+        [Paragraph("<b>Meaning</b> \u2014 relative vs complaint; doctor vs patient; dose vs identifier", s_cell),
+         Paragraph("Context-sensitive clinical shields protect clinician credentials, diagnoses, medicines and dosage expressions.", s_cell)],
+        [Paragraph("<b>Fragmented identity</b> \u2014 stable IDs without false merges", s_cell),
+         Paragraph("Evidence-based cross-file linkage, keyed HMAC pseudonyms and null assignment when evidence is insufficient.", s_cell)],
+        [Paragraph("<b>Re-identification</b> \u2014 quasi-identifiers and attacker knowledge", s_cell),
+         Paragraph("Per-patient date shifts, age bands, district-level generalization and PIN-prefix masking reduce linkage clues.", s_cell)],
+        [Paragraph("<b>Clinical integrity</b> \u2014 preserve medical values and stay intervals", s_cell),
+         Paragraph("Practice-set medical checks; patient-level date shift is designed to preserve interval lengths.", s_cell)],
+        [Paragraph("<b>Hidden leakage</b> \u2014 filenames, headers, keys, metadata, attachments", s_cell),
+         Paragraph("Supported hidden surfaces are scanned/sanitized; unsafe inputs are quarantined.", s_cell)],
     ]
-    tbl = Table(data, colWidths=[112, 130, 195, 55])
-    tbl.setStyle(TableStyle([
+    t_traps = Table(traps, colWidths=[170, 338])
+    t_traps.setStyle(TableStyle([
         ("BACKGROUND", (0, 0), (-1, 0), NAVY),
-        ("TEXTCOLOR", (0, 0), (-1, 0), WHITE),
-        ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
-        ("FONTSIZE", (0, 0), (-1, -1), 7.2),
-        ("LEADING", (0, 0), (-1, -1), 9.2),
         ("ROWBACKGROUNDS", (0, 1), (-1, -1), [WHITE, BG_LIGHT]),
         ("GRID", (0, 0), (-1, -1), 0.4, BORDER),
         ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
         ("TOPPADDING", (0, 0), (-1, -1), 3),
         ("BOTTOMPADDING", (0, 0), (-1, -1), 3),
     ]))
-    story.append(tbl)
-    story.append(Spacer(1, 4))
+    story.append(t_traps)
 
-    story.append(Paragraph("8. Limitations, Unverified Items & Competition Compliance", s_h2))
-    story.append(Paragraph("• <b>Adaptive k-Anonymity Not Active in Export:</b> <i>rakshak/privacy/k_anonymity.py</i> implements risk-analysis and widening/suppression helpers, and <i>report.json</i> logs summary counts, but record-level age widening/PIN suppression is not enforced on <i>sanitized/</i> files to avoid degrading clinical utility.", s_bullet))
-    story.append(Paragraph("• <b>Official Scorer Dependency:</b> <i>raksha_eval</i> is not distributed in the repository; A1–A7 attack probabilities await official evaluation.", s_bullet))
-    story.append(Paragraph("• <b>Compliance:</b> 100% CPU-only, offline, zero LLMs/transformers, zero network calls at runtime, zero modified truth/evaluator files, and strictly within the 2-CPU / 4 GB RAM / 15-minute sandbox budget.", s_bullet))
+    story.append(Paragraph("3. Three-Layer Architecture", s_h2))
+    arch = [
+        [Paragraph("<b>SENTINEL</b>", ParagraphStyle("AH", parent=s_cell_b, textColor=WHITE)),
+         Paragraph("<b>IDENTITY GUARD</b>", ParagraphStyle("AH", parent=s_cell_b, textColor=WHITE)),
+         Paragraph("<b>VAULT</b>", ParagraphStyle("AH", parent=s_cell_b, textColor=WHITE))],
+        [Paragraph("Ingestion, encoding/format checks, depth and payload guards, fail-closed quarantine.", s_cell),
+         Paragraph("Multilingual PII/context detection, evidence extraction and conservative patient linkage.", s_cell),
+         Paragraph("Domain-separated HMAC pseudonyms, date shifts, quasi-identifier generalization and reporting.", s_cell)],
+    ]
+    t_arch = Table(arch, colWidths=[169, 170, 169])
+    t_arch.setStyle(TableStyle([
+        ("BACKGROUND", (0, 0), (-1, 0), NAVY),
+        ("BACKGROUND", (0, 1), (-1, 1), BG_LIGHT),
+        ("GRID", (0, 0), (-1, -1), 0.4, BORDER),
+        ("VALIGN", (0, 0), (-1, -1), "TOP"),
+        ("TOPPADDING", (0, 0), (-1, -1), 3.5),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 3.5),
+    ]))
+    story.append(t_arch)
+    story.append(Spacer(1, 3))
+    story.append(Paragraph("<b>Output contract:</b> <font name='Courier'>sanitized/ + report.json + records.jsonl</font>. Unsupported/unsafe inputs are quarantined; ambiguous identity is <font name='Courier'>null</font>.", s_body))
 
-    story.append(Paragraph("9. Conclusion", s_h2))
+    story.append(Paragraph("4. What Makes RAKSHA Different", s_h2))
     story.append(Paragraph(
-        "RAKSHA delivers verifiable zero-leakage multilingual de-identification, 100.0% medical preservation, and 1.00 F0.5 cross-hospital linkage "
-        "at 31 MB RSS in under 7 seconds, satisfying all offline, deterministic, and contract requirements for Track 3: Secret Wards.", s_body
+        "RAKSHA treats privacy as a combined detection, identity and attacker-resistance problem\u2014not a name-redaction task. Its differentiators are "
+        "multilingual/contextual extraction, conservative identity resolution, domain-separated keyed pseudonymization, hidden-channel hygiene and an "
+        "explicit privacy\u2013utility balance.", s_body
     ))
 
-    doc.build(story)
+    story.append(Paragraph("5. Practice-Set Validation Snapshot", s_h2))
+    snap = [
+        [Paragraph("<b>Metric</b>", ParagraphStyle("SH", parent=s_cell_b, textColor=WHITE)),
+         Paragraph("<b>Reported result</b>", ParagraphStyle("SH", parent=s_cell_b, textColor=WHITE))],
+        [Paragraph("PII leakage", s_cell), Paragraph("0 / 3,230 (0.0%)", s_cell)],
+        [Paragraph("Canary leakage", s_cell), Paragraph("0 / 4", s_cell)],
+        [Paragraph("Medical values preserved", s_cell), Paragraph("4,855 / 4,855 (100.0%)", s_cell)],
+        [Paragraph("Identity linkage", s_cell), Paragraph("Precision 1.00 \u00b7 Recall 1.00 \u00b7 F0.5 1.00 \u00b7 0 wrong merges", s_cell)],
+        [Paragraph("File accounting / raw copies", s_cell), Paragraph("192 sanitized + 8 quarantined = 200 \u00b7 0 raw copies", s_cell)],
+        [Paragraph("Contract / pre-submit audit", s_cell), Paragraph("CONTRACT OK \u00b7 READY TO SUBMIT", s_cell)],
+        [Paragraph("Tests / runtime / memory", s_cell), Paragraph("199 passed \u00b7 6.64 s \u00b7 31.0 MB peak RSS", s_cell)],
+    ]
+    t_snap = Table(snap, colWidths=[170, 338])
+    t_snap.setStyle(TableStyle([
+        ("BACKGROUND", (0, 0), (-1, 0), NAVY),
+        ("ROWBACKGROUNDS", (0, 1), (-1, -1), [WHITE, BG_LIGHT]),
+        ("GRID", (0, 0), (-1, -1), 0.4, BORDER),
+        ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+        ("TOPPADDING", (0, 0), (-1, -1), 2.5),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 2.5),
+    ]))
+    story.append(t_snap)
+    story.append(Spacer(1, 3))
+    callout = Table(
+        [[Paragraph("<b>Scope: These are repository-reported results on the 200-file practice set, not hidden-dataset or official attacker scores.</b>", ParagraphStyle("C", parent=s_cell, textColor=NAVY))]],
+        colWidths=[508],
+    )
+    callout.setStyle(TableStyle([
+        ("BACKGROUND", (0, 0), (-1, -1), BG_CALLOUT),
+        ("BOX", (0, 0), (-1, -1), 0.5, ACCENT),
+        ("TOPPADDING", (0, 0), (-1, -1), 4),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
+    ]))
+    story.append(callout)
+
+    story.append(PageBreak())
+
+    # ==================== PAGE 2 ====================
+    story.append(Paragraph("RAKSHA | PROJECT BRIEF", ParagraphStyle("P2T", parent=s_title, fontSize=16, leading=19)))
+    story.append(Paragraph("PRIVACY, UTILITY, SECURITY & EVALUATION ALIGNMENT", s_sub))
+    story.append(HRFlowable(width="100%", thickness=1, color=NAVY, spaceAfter=5))
+
+    story.append(Paragraph("6. Privacy\u2013Utility Trade-off", s_h2))
+    story.append(Paragraph(
+        "RAKSHA reduces the precision of selected quasi-identifiers while retaining clinical values. Reported transformations include five-year age "
+        "bands, village-to-district generalization, three-digit PIN prefixes and per-patient date shifts. A consistent patient-level shift is intended to "
+        "preserve encounter intervals and exact hospital length-of-stay durations.", s_body
+    ))
+    story.append(Paragraph(
+        "This trades some demographic and geographic granularity for a smaller linkage surface. Over-generalization harms research utility, while "
+        "retaining rare combinations can expose patients. The balance must be measured against the organizer's attacker and utility checks.", s_body
+    ))
+
+    story.append(Paragraph("7. Security Design", s_h2))
+    story.append(Paragraph("\u2022 <b>Secret handling:</b> <font name='Courier'>RAKSHA_SECRET</font> is supplied through the environment and must not be committed, logged or written to output.", s_bullet))
+    story.append(Paragraph("\u2022 <b>Purpose separation:</b> HMAC-SHA256 domains distinguish pseudonym, date-shift and filename-tag derivations.", s_bullet))
+    story.append(Paragraph("\u2022 <b>Side-channel hygiene:</b> do not expose raw identifiers in logs, errors, reports or temporary artifacts.", s_bullet))
+    story.append(Paragraph("\u2022 <b>Fail-safe behavior:</b> malformed or unsupported inputs are quarantined rather than copied as sanitized.", s_bullet))
+    story.append(Paragraph("\u2022 <b>Runtime constraints:</b> offline, CPU-only and LLM-free; organizer limit is 2 CPUs, 4 GB RAM and 15 minutes.", s_bullet))
+
+    story.append(Paragraph("8. Honest Limitations & Unverified Items", s_h2))
+    story.append(Paragraph("\u2022 <b>Official attacker evaluation:</b> the organizer's <font name='Courier'>raksha_eval</font> runner is not bundled in the repository. Exact official A1\u2013A7 attack probabilities and B\u00b3 F1 are <b>not evaluated locally</b>.", s_bullet))
+    story.append(Paragraph("\u2022 <b>Adaptive k-anonymity:</b> helper/risk-analysis code exists, but record-level adaptive age widening/PIN suppression is <b>not actively enforced</b> in the current sanitized export.", s_bullet))
+    story.append(Paragraph("\u2022 <b>Generalization:</b> unseen regional names, unfamiliar identifiers and new file structures may reduce recall or linkage quality on hidden datasets.", s_bullet))
+    story.append(Paragraph("\u2022 <b>Practice versus hidden data:</b> practice-set results do not guarantee performance on the three hidden evaluation datasets.", s_bullet))
+
+    story.append(Paragraph("9. Alignment with the Scoring Rubric", s_h2))
+    rubric = [
+        [Paragraph("<b>Scoring category</b>", ParagraphStyle("RH", parent=s_cell_b, textColor=WHITE)),
+         Paragraph("<b>Weight</b>", ParagraphStyle("RH", parent=s_cell_b, textColor=WHITE)),
+         Paragraph("<b>RAKSHA focus</b>", ParagraphStyle("RH", parent=s_cell_b, textColor=WHITE))],
+        [Paragraph("Privacy against attacks", s_cell), Paragraph("25", s_cell), Paragraph("Reduce direct and quasi-identifier linkage; official attack scores pending.", s_cell)],
+        [Paragraph("Personal-data detection", s_cell), Paragraph("20", s_cell), Paragraph("Multilingual content and hidden-surface detection with context safeguards.", s_cell)],
+        [Paragraph("Medical-data preservation", s_cell), Paragraph("20", s_cell), Paragraph("Preserve medicines, doses, vitals, labs, diagnoses and stay lengths.", s_cell)],
+        [Paragraph("Patient identity consistency", s_cell), Paragraph("15", s_cell), Paragraph("Stable pseudonyms and conservative linkage; avoid false merges.", s_cell)],
+        [Paragraph("Output quality & validity", s_cell), Paragraph("10", s_cell), Paragraph("Required outputs, valid formats, truthful reports and quarantine.", s_cell)],
+        [Paragraph("Speed & reliability", s_cell), Paragraph("10", s_cell), Paragraph("Deterministic execution, runtime, memory and repeatability.", s_cell)],
+    ]
+    t_rubric = Table(rubric, colWidths=[125, 45, 338])
+    t_rubric.setStyle(TableStyle([
+        ("BACKGROUND", (0, 0), (-1, 0), NAVY),
+        ("ROWBACKGROUNDS", (0, 1), (-1, -1), [WHITE, BG_LIGHT]),
+        ("GRID", (0, 0), (-1, -1), 0.4, BORDER),
+        ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+        ("TOPPADDING", (0, 0), (-1, -1), 3),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 3),
+    ]))
+    story.append(t_rubric)
+
+    story.append(Paragraph("10. Closing Position", s_h2))
+    story.append(Paragraph(
+        "RAKSHA is built around the central Secret Wards requirement: <b>protect patient privacy without compromising the accuracy, integrity or "
+        "medical usefulness of healthcare data</b>. Its proposition is adversarial re-identification resistance with clinical-utility preservation, supported by "
+        "practice-set checks and transparent disclosure of what remains unverified.", s_body
+    ))
+    story.append(Paragraph("<b>Repository:</b> github.com/30sharathkumar-ux/Med-sec<br/><b>Track:</b> Yugaantar DevForge 2026 \u00b7 Track 3: Secret Wards", s_body))
+
+    doc.build(story, onFirstPage=_draw_footer, onLaterPages=_draw_footer)
 
 
 if __name__ == "__main__":
