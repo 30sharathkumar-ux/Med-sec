@@ -11,4 +11,5 @@
 - [x] **Output Contract (`validate_output.py`):** `CONTRACT OK` (`192` sanitized + `8` quarantined = `200/200`, `0` raw copies).
 - [x] **Resource & Offline Compliance:** `6.64s` runtime, `31.0 MB` peak RSS, `taskset -c 0,1` 2-CPU Linux verified, zero LLMs, zero network calls.
 - [x] **Source & Truth Integrity:** `dev/`, `check_dev.py`, `validate_output.py`, `check_submission.py`, `scoring.toml` untouched.
-- [ ] **Git Commit & Push:** Awaiting user review/approval of local changes (`git status --short`).
+- [x] **Known Limitations Disclosed:** Official `raksha_eval` A1–A7 / B³ F1 runner is not bundled locally (not evaluated locally), and adaptive record-level k-anonymity widening/suppression (`widen_age_band`, `suppress_pin`) is not actively enforced on `sanitized/` exports.
+- [x] **Git Commit & Push:** Committed and pushed to `origin/main` and `origin/master` (validated code commit: `d576f17`, `raksha.toml` team name commit: `3cec0ec`, documentation commit: `fe93e90`, plus this documentation consistency commit).

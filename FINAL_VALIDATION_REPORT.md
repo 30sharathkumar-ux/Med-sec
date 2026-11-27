@@ -1,8 +1,12 @@
 # RAKSHA — Final Competition Validation Report
 
-**Date:** 2026-11-27  
-**Repository:** `d:\RAKSHA` (`30sharathkumar-ux/Med-sec`, branch `main`)  
-**Base Commit:** `945a4ba25995f77e789ffdea149e1df11adc8243` (with local hardened changes ready for review)
+**Date:** 2026-11-27
+
+**Repository:** `d:\RAKSHA` (`30sharathkumar-ux/Med-sec`, branches `main` and `master`)
+
+**Validated Code Commit:** `d576f178cf4e000bd5a917cac48258434c393f9b` (`d576f17` — includes all hardened code changes in `rakshak/cli.py`, `rakshak/detection/context_rules.py`, and `tests/test_doctor_qualifications.py`)
+
+**Later Metadata / Documentation Commits:** `3cec0ec` (`raksha.toml` team name `POINT_BLANK`), `fe93e90` (updated `README.md` and `brief/PROJECT_BRIEF.pdf`)
 
 ---
 

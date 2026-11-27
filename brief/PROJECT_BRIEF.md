@@ -1,70 +1,61 @@
-# Team RAKSHA: Offline Multilingual Medical Privacy Firewall
+# RAKSHA — Offline Multilingual Medical Data Privacy Firewall
 
-**Track 3 · Secret Wards** · Repo: [team-raksha](https://github.com/team-raksha)
+**Track 3 · Secret Wards** · Team: `POINT_BLANK` · Repo: https://github.com/30sharathkumar-ux/Med-sec
 
-## 1. In one paragraph
+**Positioning:** *Adversarial Re-identification Resistance with Clinical-Utility Preservation*
 
-RAKSHA is an offline, CPU-only, LLM-free privacy firewall that de-identifies Indian hospital records across English, Hindi, and Hinglish. Unlike off-the-shelf PII tools that miss Indian name structures and multilingual text, RAKSHA combines rule-based detection, Indian name gazetteers, Devanagari–Latin transliteration, phonetic blocking, and contextual intelligence to remove personal data while preserving every medical value exactly. Its three-layer architecture—SENTINEL for ingestion, IDENTITY GUARD for detection and cross-file patient linking, and VAULT for privacy transformation—processes 200 files in under 3 seconds with 32 MB RAM, achieves zero content PII leaks, zero wrong merges, and 100% medical value preservation on the practice dataset.
+---
 
-## 2. Architecture
+## 1. The Challenge
 
-```
-┌──────────────────────────────────────────────────────────────────────┐
-│                        RAKSHA Pipeline                               │
-│                                                                      │
-│  ┌────────────────┐   ┌─────────────────┐   ┌────────────────────┐  │
-│  │   SENTINEL      │   │  IDENTITY GUARD  │   │      VAULT         │  │
-│  │  (Layer 1)      │──▶│    (Layer 2)     │──▶│    (Layer 3)       │  │
-│  │                 │   │                  │   │                    │  │
-│  │ • Encoding      │   │ • Name detection │   │ • HMAC pseudonyms  │  │
-│  │ • Format sniff  │   │ • ID detection   │   │ • Date shifting    │  │
-│  │ • Quarantine    │   │ • Context rules  │   │ • Age banding      │  │
-│  │ • Hidden PII    │   │ • Linkage        │   │ • Location gen.    │  │
-│  └────────────────┘   └─────────────────┘   └────────────────────┘  │
-│                                                                      │
-│  Input ──▶  sanitized/  +  report.json  +  records.jsonl             │
-└──────────────────────────────────────────────────────────────────────┘
-```
+Secret Wards asks teams to build an **offline, CPU-only, LLM-free privacy firewall** for synthetic Indian hospital records from four hospital systems, spanning English, Hindi and Hinglish. The system must remove personal information, preserve medically useful values exactly, link the same patient across languages/files/hospitals without false merges, and prevent leaks in outputs, logs, temporary files and errors.
 
-**Two-pass design:** Pass 1 ingests all files and extracts evidence for identity resolution. Pass 2 applies PII detection, pseudonymization, and privacy transforms using resolved patient clusters.
+The hidden attacker may combine quasi-identifiers—age, village, PIN, visit date, rare diagnosis and length of stay—with outside population knowledge. Removing names alone is not sufficient.
 
-## 3. How it works
+## 2. RAKSHA's Response to the Six Challenge Traps
 
-- **Ingestion:** Reads CSV, TSV, JSON, FHIR R4 Bundles, and text notes. Detects UTF-8, UTF-8 BOM, UTF-16, and cp1252 encodings. Quarantines empty, oversized, malformed, and unsupported files (8/200 on practice data). Sanitizes filenames containing PII. Preserves relative folder structure.
-
-- **Detection:** Multi-module engine combining: (1) regex-based identifier detection for Aadhaar, ABHA, PAN, MRN/UHID, phone, email, and insurance IDs; (2) Indian name gazetteers with honorific handling (ji, sahab, didi) and surname-first ordering; (3) contextual rules that distinguish "C/O Ramesh" (relative) from "C/O fever" (complaint), preserve "Dr. Ramesh", keep "Ramipril 5 mg", "1-0-1" dosages, and "Parkinson's disease"; (4) hidden-surface inspection of CSV headers, JSON keys, filenames, metadata paths, and Base64 payloads; (5) Devanagari–Latin transliteration for Hindi name detection.
-
-- **Linkage & pseudonyms:** Evidence-based identity resolution using name normalization, phonetic keys (Soundex-like), Devanagari transliteration, and fuzzy matching via `rapidfuzz`. Blocking by phonetic key and normalized identifiers prevents O(n²) comparisons. Conservative matching: conflicting DOB or identifiers prevent merges; insufficient evidence → `patient: null`. HMAC-SHA256 keyed pseudonyms (format: `PSN-XXXXXXXX`) ensure non-reversibility and cross-release unlinkability.
-
-- **Privacy layer:** Per-patient deterministic date shifting (±180 days via HMAC), 5-year age banding, village → district generalization, PIN → 3-digit prefix, house/locality suppression. Date shifts are uniform per patient, preserving exact stay durations. Different `RAKSHA_SECRET` → different pseudonyms and shifts.
-
-- **Security:** Fully in-memory processing — no raw intermediate files written to disk. Secret read from `RAKSHA_SECRET` env var, never cached or logged. PII-free stdout (counts only). Quarantine design for unsafe files. No `tempfile` usage.
-
-## 4. USP
-
-- **True multilingual detection:** Handles Mohammad/Mohd/Md./मोहम्मद as the same person; detects S/o, D/o, W/o and Hindi kinship frames (पत्नी, बेटा); processes mixed English-Hindi-Hinglish text in the same record — capabilities that off-the-shelf PII tools lack entirely.
-
-- **Context-aware clinical preservation:** Understands that "Ramipril" is a drug not a name, "1-0-1" is a dosage not an ID, and "Parkinson's" is a disease not a person. Achieves 100% medical value preservation with zero content PII leaks.
-
-- **Sub-3-second, 32 MB processing:** No model loading, no GPU, no network — pure algorithmic approach. 364× faster and 130× lighter than resource limits, ensuring reliability even on constrained evaluation hardware.
-
-## 5. Privacy–utility trade-off (measured on practice data)
-
-| Measure | Value |
+| Track requirement | RAKSHA design response |
 |---|---|
-| Personal data leaked (content / Hindi / Hinglish) | 0.0% / 0.0% / 0.0% |
-| Medical values kept | 100.0% (4671/4671 matched probes) |
-| Linking precision / recall / F0.5 | 1.00 / 0.70 / 0.92 |
-| Wrong patient merges | 0 |
-| Re-identification risk estimate | Low: 5-year age bands + district-level geography + ±180-day date shift |
-| Run time / peak memory | 2.47s / 31.6 MB |
-| On unseen data (expected) | Detection gaps likely for unseen name patterns and formats; linkage precision prioritized over recall to avoid false merges |
+| **Language** — English, Hindi, Hinglish; aliases and transliteration | Script-aware rules, Devanagari–Latin normalization, name patterns and phonetic blocking. |
+| **Meaning** — relative vs complaint; doctor vs patient; dose vs identifier | Context-sensitive clinical shields protect clinician credentials, diagnoses, medicines and dosage expressions. |
+| **Fragmented identity** — stable IDs without false merges | Evidence-based cross-file linkage, keyed HMAC pseudonyms and null assignment when evidence is insufficient. |
+| **Re-identification** — quasi-identifiers and attacker knowledge | Per-patient date shifts, age bands, district-level generalization and PIN-prefix masking reduce linkage clues. |
+| **Clinical integrity** — preserve medical values and stay intervals | Practice-set medical checks; patient-level date shift is designed to preserve interval lengths. |
+| **Hidden leakage** — filenames, headers, keys, metadata, attachments | Supported hidden surfaces are scanned/sanitized; unsafe inputs are quarantined. |
 
-We chose conservative settings: 5-year age bands and district-level location generalization sacrifice some research granularity but substantially reduce the quasi-identifier attack surface. Per-patient date shifting preserves temporal intervals exactly (a 9-day stay remains 9 days) while preventing calendar-based re-identification. The trade-off is deliberate: in a medical privacy context, false safety (missed PII) is far worse than over-generalization.
+## 3. Three-Layer Architecture
 
-## 6. Known limitations
+- **SENTINEL:** Ingestion, encoding/format checks, depth and payload guards, fail-closed quarantine.
+- **IDENTITY GUARD:** Multilingual PII/context detection, evidence extraction and conservative patient linkage.
+- **VAULT:** Domain-separated HMAC pseudonyms, date shifts, quasi-identifier generalization and reporting.
 
-- **Unseen name patterns:** The gazetteer and rules are tuned on practice data. Unusual names, new ID formats, or labels never seen in training data will reduce recall on hidden datasets.
-- **Rare diagnosis + small population:** While age banding and location generalization provide strong protection, a unique diagnosis in a small district may still enable re-identification.
-- **No classical ML NER:** Detection relies on rules and gazetteers rather than CRF/spaCy models. This keeps the system fast and dependency-light but may miss edge cases a trained model would catch.
-- **Recall vs precision trade-off:** F0.5 = 0.92 reflects our deliberate choice to prioritize precision (zero wrong merges) over recall (some patients left unlinked). On hidden data with more ambiguous cases, recall may drop further.
+Output contract: `sanitized/ + report.json + records.jsonl`. Unsupported/unsafe inputs are quarantined; ambiguous identity is `null`.
+
+## 4. What Makes RAKSHA Different
+
+RAKSHA treats privacy as a combined detection, identity and attacker-resistance problem—not a name-redaction task. Its differentiators are multilingual/contextual extraction, conservative identity resolution, domain-separated keyed pseudonymization, hidden-channel hygiene and an explicit privacy–utility balance.
+
+## 5. Practice-Set Validation Snapshot
+
+| Metric | Reported result |
+|---|---|
+| PII leakage | `0 / 3,230` (`0.0%`) |
+| Canary leakage | `0 / 4` |
+| Medical values preserved | `4,855 / 4,855` (`100.0%`) |
+| Identity linkage | Precision `1.00` · Recall `1.00` · F0.5 `1.00` · `0` wrong merges |
+| File accounting / raw copies | `192` sanitized + `8` quarantined = `200` · `0` raw copies |
+| Contract / pre-submit audit | `CONTRACT OK` · `READY TO SUBMIT` |
+| Tests / runtime / memory | `199 passed` · `6.64 s` · `31.0 MB` peak RSS |
+
+> **Scope:** These are repository-reported results on the 200-file practice set, not hidden-dataset or official attacker scores.
+
+## 6. Privacy–Utility Trade-off & Security Design
+
+- **Trade-off:** Five-year age bands, village-to-district generalization, three-digit PIN prefixes and per-patient date shifts reduce the linkage surface while preserving clinical values and exact length-of-stay durations.
+- **Security:** `RAKSHA_SECRET` is supplied through the environment and never committed, logged or written to output; HMAC-SHA256 uses separate purpose prefixes (`psn|`, `shift|`, `fname|`); malformed/unsupported inputs are quarantined fail-closed; runtime is offline, CPU-only and LLM-free.
+
+## 7. Honest Limitations & Unverified Items
+
+- **Official attacker evaluation:** The organizer's `raksha_eval` runner is not bundled in the repository. Exact official A1–A7 attack probabilities and B³ F1 are **not evaluated locally**.
+- **Adaptive k-anonymity:** Helper/risk-analysis code exists, but record-level adaptive age widening/PIN suppression is **not actively enforced** in the current sanitized export.
+- **Generalization & unseen data:** Unseen regional names, unfamiliar identifiers and novel file structures may reduce recall or linkage quality on the three hidden evaluation datasets.
