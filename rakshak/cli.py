@@ -528,18 +528,24 @@ def _sanitize_filename(rel_path: str, sha256: str) -> str:
 # Hospital detection from file paths
 # ---------------------------------------------------------------------------
 
+_GENERIC_FILE_TOKENS = frozenset({
+    "rx", "ds", "opd", "ipd", "lab", "claims", "registration", "patients",
+    "results", "bulk", "export", "legacy", "bundle", "note", "notes",
+    "nursing", "discharge", "summary", "whatsapp", "forward", "report",
+    "clean", "city", "lifeline", "pathkind", "adm", "uhid",
+})
+
+
 def _detect_hospital(rel_path: str) -> str:
-    """Infer hospital name from file path for linking context."""
-    path_lower = rel_path.lower()
-    if 'sanjeevani' in path_lower or 'snj' in path_lower:
-        return 'sanjeevani'
-    if 'jeevan' in path_lower or 'jyoti' in path_lower or 'jjh' in path_lower:
-        return 'jeevanjyoti'
-    if 'arogya' in path_lower:
-        return 'arogya'
-    if 'dh' in path_lower and 'hardoi' in path_lower or 'dhh' in path_lower:
-        return 'dhh'
-    return ''
+    """Infer facility identifier dynamically from file path without hardcoded hospital names."""
+    stem = Path(rel_path).stem.lower()
+    # Strip trailing copy markers like " (1)" and split on separators
+    stem = re.sub(r"\(\d+\)", "", stem)
+    tokens = [t for t in re.split(r"[^a-z]+", stem) if t and len(t) >= 3]
+    for tok in tokens:
+        if tok not in _GENERIC_FILE_TOKENS:
+            return tok
+    return ""
 
 
 # ---------------------------------------------------------------------------

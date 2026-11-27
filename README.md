@@ -1,203 +1,145 @@
 # RAKSHA: Offline Multilingual Medical Data Privacy Firewall
 
-**Yugaantar DevForge 2026 · Track 3: Secret Wards**  
-*What happens in the ward stays in the ward.*
+**Adversarial Re-identification Resistance with Clinical-Utility Preservation**  
+*Yugaantar DevForge 2026 · Track 3: Secret Wards*
 
 ---
 
-## 1. Project Overview & Mission
+## 1. Problem Statement
 
-Hospital networks across Yugaantar Pradesh are aggregating years of heterogeneous patient encounters into a single longitudinal research dataset for epidemiological and public-health analysis. The ingested data spans four distinct health systems with varying schemas, encodings, and clinical documentation styles:
-- **Sanjeevani Multispeciality Hospital** (CSV with full demographics and duplicate exports; UTF-8 with BOM; Day-First dates)
-- **Jeevan Jyoti Charitable Hospital** (TSV with Hindi Devanagari headers and rows; UTF-16; Day-First dates)
-- **Arogya Seva Sadan** (Legacy CSV with split names and multiline clinical notes; cp1252; Month-First dates)
-- **District Hospital Hardoi** (Nested JSON with unquoted identifiers; UTF-8; ISO dates)
+Hospital networks aggregating heterogeneous patient encounters for public-health research face a three-way conflict:
+1. **Multilingual & Hidden PII:** Patient identifiers appear across English, Devanagari Hindi, and Hinglish free text, as well as hidden channels—filenames, CSV headers, JSON dictionary keys, export metadata paths, and Base64-encoded attachments.
+2. **Clinical Utility Destruction:** Naive redaction strips medications, dosages (`1-0-1`, `BD x 5 days`), eponyms (`Parkinson's disease`), and clinician credentials (`Dr. Anil Kumar MD Cardiology`), rendering datasets clinically unusable.
+3. **Adversarial Re-identification & Fragmented Records:** Even when names are masked, adversaries armed with population registries and partial encounter facts can re-identify patients via quasi-identifiers (exact age, village, PIN, unshifted dates) or exploit fragmented cross-hospital records.
 
-Patients appear across languages (English, Devanagari Hindi, Hinglish), with varying phone and identity notations, informal aliases, honorifics, and fragmented relative references. Furthermore, direct identifiers frequently hide in unstructured channels: export metadata paths, file names, JSON dictionary keys, CSV headers, and base64-encoded clinical referrals.
+## 2. Track Alignment
 
-**RAKSHA** is an offline, CPU-only, LLM-free medical data privacy firewall designed to satisfy three core mandates simultaneously:
-1. **Zero Compromise on Clinical Utility:** Preserve exact medications, dosages, frequencies, routes, lab values with units, vitals, ICD-10 diagnoses, and hospital length-of-stay intervals.
-2. **Robust Defense Against Adversarial Re-Identification:** Neutralize linkage attacks from adversaries armed with voter rolls and partial background knowledge (encounter dates, rare diagnoses) via per-patient HMAC date shifting, 5-year age generalization, locality hierarchy rollup, and k-anonymity suppression.
-3. **Deterministic Cross-Hospital Identity Resolution:** Issue stable, non-reversible, secret-keyed HMAC pseudonyms linking the same patient across records without transitive over-merging.
+RAKSHA is engineered specifically for **Yugaantar DevForge 2026 — Track 3: Secret Wards**, operating strictly **offline**, **CPU-only**, and **LLM-free** within the competition's `2 CPU / 4 GB RAM / 15-minute` envelope while enforcing the `raksha-report/1` and `records.jsonl` output contracts.
 
----
+## 3. Unique Selling Proposition (USP) & Why RAKSHA Is Different
 
-## 2. Architecture & Pipeline
+- **Zero-LLM, Sub-7s Deterministic Pipeline:** Pure algorithmic rules, Devanagari–Latin transliteration, phonetic blocking, and HMAC-SHA256 run in `~6.6s` (`~31 MB` peak RSS) with byte-for-byte determinism under the same `RAKSHA_SECRET`.
+- **Context-First Medical Preservation:** Distinguishes `Dr. Ramesh Srivastava (MD Medicine)` and `Dr. Anil Kumar MD Cardiology` from genuine patient names like `Md. Shahid`, `C/O fever` (complaint) from `C/O Ramesh` (relative), and `Ward 5 (Medicine)` from residential `Ward 10`.
+- **Precision-First Cross-Hospital Linkage:** Achieves `1.00` precision and `1.00` recall (`F0.5 = 1.00`, `0` wrong merges) on the practice dataset using dynamic MRN issuer-prefix extraction (`[A-Z]{2,6}[-/]`) with zero hardcoded hospital aliases.
 
-```
-                              [ INPUT DIRECTORY ]
-    (CSV, TSV, Nested JSON, FHIR R4 Bundles, Text Notes, WhatsApp Forwards, Misc)
-                                      │
-                                      ▼
-                      ┌────────────────────────────────┐
-                      │  PHASE 1: Robust Ingestion     │
-                      │  - UTF-8 / BOM / UTF-16 / cp1252│
-                      │  - Magic-byte & control checks  │
-                      │  - Depth-bounded JSON (<= 128) │
-                      │  - Content format validation   │
-                      └───────────────┬────────────────┘
-                                      │
-                       ┌──────────────┴──────────────┐
-                       │ Fail-Closed                 │ Valid & Parsed
-                       ▼                             ▼
-              ┌──────────────────┐       ┌────────────────────────────────┐
-              │ Safe Quarantine  │       │  PHASE 2: Multilingual PII     │
-              │ (No RAW copies)  │       │  Detection Engine              │
-              └──────────────────┘       │  - Structured column/key rules │
-                                         │  - Multi-script regex & NLP    │
-                                         │  - Doctor/Eponym/Dose context  │
-                                         │  - Hidden surfaces scrub       │
-                                         └───────────────┬────────────────┘
-                                                         │
-                                                         ▼
-                                         ┌────────────────────────────────┐
-                                         │  PHASE 3: Conservative Identity│
-                                         │  Resolution                    │
-                                         │  - Transliteration & phonetics │
-                                         │  - Strict multi-clue matching  │
-                                         │  - Keyed HMAC pseudonyms       │
-                                         └───────────────┬────────────────┘
-                                                         │
-                                                         ▼
-                                         ┌────────────────────────────────┐
-                                         │  PHASE 4: Privacy & Utility    │
-                                         │  - Per-patient HMAC date shift │
-                                         │  - 5-year truthful age bands   │
-                                         │  - Village -> District rollup  │
-                                         │  - PIN prefix (3-digit) mask   │
-                                         │  - Clinical probe verification │
-                                         └───────────────┬────────────────┘
-                                                         │
-                                                         ▼
-                                                [ OUTPUT DIRECTORY ]
-                                         ├── sanitized/ (Cleaned mirror)
-                                         ├── report.json (raksha-report/1)
-                                         └── records.jsonl (Locators & IDs)
+## 4. Architecture Overview: SENTINEL, IDENTITY GUARD & VAULT
+
+```mermaid
+flowchart LR
+    IN["Input Directory<br/>CSV, TSV, JSON, FHIR R4, TXT, Misc"] --> S1
+
+    subgraph SENTINEL["1. SENTINEL — Ingestion & Fail-Closed Quarantine"]
+        S1["Encoding Detection<br/>UTF-8 / BOM / UTF-16 / cp1252"] --> S2["Format & Depth Guard<br/>Magic bytes, XML reject, JSON depth <= 128"]
+        S2 -->|Invalid / Unsupported| Q["Quarantine Log<br/>report.json (No raw copy)"]
+    end
+
+    S2 -->|Valid & Parsed| P1
+
+    subgraph IG["2. IDENTITY GUARD — Multilingual Detection & Linkage"]
+        P1["Pass 1: Evidence Extraction<br/>Structured keys, EN/HI/Hinglish, MRN issuer prefix"] --> P2["Conservative Clustering<br/>Strong IDs + Corroborated Name/Phonetics"]
+        P2 --> DET["Pass 2: Multilingual PII & Context Shields<br/>Doctors + Qualifications, Eponyms, Doses, Wards, Hidden Surfaces"]
+    end
+
+    DET --> V1
+
+    subgraph VAULT["3. VAULT — Pseudonymization & Privacy Transforms"]
+        V1["HMAC-SHA256 Domain Separation<br/>psn| / shift| / fname|"] --> V2["Generalization & Temporal Shift<br/>5-yr Age Bands, District Rollup, PIN***, +-180d Shift (LOS kept)"]
+    end
+
+    V2 --> OUT["Output Directory<br/>sanitized/ + report.json + records.jsonl"]
 ```
 
----
+*(Diagram source: [docs/architecture.mmd](docs/architecture.mmd))*
 
-## 3. Modular Engineering Design
+| Layer | Modules | Core Responsibility |
+|---|---|---|
+| **SENTINEL** | `encoding.py`, `ingestion.py`, `processors/quarantine.py`, `privacy/fhir_validator.py` | Multi-encoding decoding, magic-byte/XML checks, iterative JSON depth bounding (`<= 128`), FHIR R4 structural validation, fail-closed quarantine |
+| **IDENTITY GUARD** | `detection/*` (`names.py`, `identifiers.py`, `addresses.py`, `context_rules.py`, `hidden_surfaces.py`, `multilingual.py`, `structured.py`), `linkage/*` (`resolver.py`, `normalize.py`) | Multilingual PII span detection, hidden-channel scrubbing, Devanagari transliteration, phonetic blocking, conservative Union-Find clustering |
+| **VAULT** | `privacy/pseudonymize.py`, `privacy/transforms.py`, `privacy/k_anonymity.py`, `reporting/*`, `security/logging.py` | Domain-separated HMAC-SHA256 pseudonyms (`PSN-XXXXXX`), per-patient date shifts (`±180d`), 5-year age bands, village→district & PIN prefix generalization, contract reporting |
 
-```
-RAKSHA/
-├── raksha.toml                   # Submission contract declaration (name, setup, run)
-├── requirements.txt              # Standard library + rapidfuzz, cryptography
-├── config/
-│   └── policy.yaml               # Configurable age bands, date shift limits, depth limits
-├── main.py                       # CLI entrypoint for the offline evaluator
-├── rakshak/
-│   ├── __init__.py
-│   ├── cli.py                    # Pipeline orchestration and CLI interface
-│   ├── encoding.py               # Robust encoding detection (UTF-8, UTF-16, cp1252, binary)
-│   ├── ingestion.py              # File discovery, depth bounding, format validation
-│   ├── detection/
-│   │   ├── __init__.py
-│   │   ├── identifiers.py        # Indian ID patterns (Aadhaar, ABHA, Phone, PAN, MRN)
-│   │   ├── structured.py         # Semantic column/key classifier (EN, HI, Hinglish)
-│   │   ├── multilingual.py       # Devanagari transliteration & phonetic normalization
-│   │   ├── context_rules.py      # Clinical shields (Doctors, Eponyms, Doses, Wards)
-│   │   ├── names.py              # Multilingual patient & relative name extraction
-│   │   ├── addresses.py          # Residential house, locality, landmark, village, PIN
-│   │   └── hidden_surfaces.py    # Filename HMAC renamer, JSON keys, base64 attachments
-│   ├── processors/
-│   │   ├── __init__.py
-│   │   └── quarantine.py         # Safe fail-closed quarantine record generator
-│   ├── reporting/
-│   │   ├── __init__.py
-│   │   ├── report.py             # raksha-report/1 JSON report builder & memory monitor
-│   │   └── records.py            # records.jsonl generator & RFC 6901 pointer handler
-│   └── security/
-│       ├── __init__.py
-│       └── logging.py            # PII-free stderr logging & secret guard
-└── tests/
-    ├── __init__.py
-    ├── test_contract.py          # Determinism, report structure, and repeat-run tests
-    └── test_ingestion.py         # Encoding, depth bounding, format mismatch tests
-```
+## 5. End-to-End Data Flow
 
----
+1. **Pass 1 (Ingest & Resolve):** Discover files deterministically; decode UTF-8/BOM/UTF-16/cp1252; quarantine malformed/unsupported payloads; extract patient evidence across CSV/TSV, JSON, FHIR R4 `Bundle`, and text; resolve clusters using strong IDs (with phonetic collision guards and dynamic MRN issuer prefixes) and corroborated name/demographic clues.
+2. **Pass 2 (Sanitize, Transform & Export):** Scrub PII-bearing filenames (`fname|`), CSV headers, JSON keys, metadata paths, Base64 payloads, and free text; inject deterministic `PSN-XXXXXX` (`psn|`) pseudonyms; apply per-patient date shifts (`shift|`), age banding, and location generalization; emit `sanitized/`, `records.jsonl`, and `report.json`.
 
-## 4. Key Mechanisms & Implementation Details
+## 6. Supported Inputs & Outputs
 
-### A. Robust Ingestion & Fail-Closed Quarantine
-- **Encoding Defense:** Detects UTF-8 with BOM (`\xef\xbb\xbf`), UTF-16 (`\xff\xfe` / `\xfe\xff`), standard UTF-8, and legacy cp1252. Corrupt mixed-byte runs (such as embedded UTF-16 headers in text) and disallowed C0 control characters are quarantined rather than silently passed.
-- **Payload Validation:** Inspects magic bytes to detect binary formats (PDF, JPEG, PNG, PE) and rejects XML CDA payloads.
-- **Format Integrity:** Detects mislabeled formats (e.g., JSON disguised with a `.csv` extension) and enforces bounded iteration depth on deeply nested JSON structures (`max_json_depth: 128`), preventing stack-overflow recursion attacks.
-- **Fail-Safe Export:** Unsupported or unparseable files are logged in `report.json` with an explicit reason and never copied into `sanitized/`, eliminating unprocessed export penalties.
+| Inputs | Outputs |
+|---|---|
+| `.csv`, `.tsv` (UTF-8, UTF-8 BOM, UTF-16, cp1252), `.json` (flat/nested), FHIR R4 `Bundle` `.json`, `.txt` clinical notes & WhatsApp forwards | `sanitized/` (clean directory mirror), `records.jsonl` (RFC 6901 JSON pointers & `PSN-XXXXXX` links), `report.json` (`raksha-report/1` counts, entities, timing, RSS, quarantine reasons) |
+| Unsupported/corrupt inputs (PDF, images, XML CDA, binary, depth `> 128`, empty, format-mismatched) | Safely quarantined in `report.json`; **never** copied raw to `sanitized/` |
 
-### B. Multilingual PII Detection Engine
-- **Structured Fields:** Classifies column headers and dictionary keys semantically across variations (`Patient Name`, `मरीज़ का नाम`, `Naam`, `Janm Tithi`, `Pita ka Naam`, `Gaon`, `Umar`, `Aadhar`, `Contact#`, `Reg No`).
-- **Identifier Precision:** High-precision regular expressions distinguish 14-digit ABHA numbers, 12-digit Aadhaar, masked Aadhaar (`XXXX XXXX 1234`), 10-digit Indian phones (with `+91`, leading `0`, or Devanagari digits), PAN, and institutional MRN/IPD tokens.
-- **Contextual Clinical Shields:** Explicitly protects medical eponyms (Addison's disease, Parkinson's, Bell's palsy), hospital wards/beds (Ward 5 Medicine Bed 18 vs residential Ward 20), clinical history markers (`K/C/O`, `H/O`, `C/O fever`), and all clinical dosages (`650 mg`, `1-0-1`, `BD x 5 days`). Doctors (`Dr. Ramesh Srivastava`) are preserved while relatives (`C/O Ramesh Patel`) are redacted.
-- **Hidden Channels:** Automatically cleans export metadata strings (`source_path`), decrypts and sanitizes base64 clinical attachments, renames PII-bearing filenames via deterministic HMAC tags, and scrubs patient names from dictionary keys and CSV headers.
+## 7. Multilingual PII Detection & Medical Preservation
 
-### C. Conservative Identity Resolution
-- **Multi-Clue Evidence:** Links records only when supported by strong unique identifiers (UHID, Aadhaar, ABHA, Phone, Insurance ID) or an exact match on transliterated patient name plus a secondary discriminant (DOB, guardian name, or village + age).
-- **Phonetic & Cross-Script Normalization:** Custom Devanagari-to-Latin transliteration and vowel-tolerant phonetic keying bridge orthographic drift (`Mohd` / `Mohammad` / `मोहम्मद`, `Reena` / `Rina`, `Chouhan` / `Chauhan`).
-- **Homonym Protection:** Strictly avoids unconstrained transitive clustering. Ambiguous records with insufficient linking evidence receive `patient: null`, avoiding catastrophic false merges.
+- **Identifiers:** 12-digit & masked Aadhaar, 14-digit ABHA numbers & ABHA addresses, Indian mobile numbers (`+91`, `0`, Devanagari digits), PAN, email, insurance IDs, and institutional MRN/UHIDs.
+- **Names & Relatives:** English, Devanagari (`राम`, `सीता`), and Hinglish (`Mohd.`, `Md.`, `मोहम्मद`) names with honorifics (`ji`, `sahab`, `didi`) and kinship frames (`S/o`, `D/o`, `W/o`, `पत्नी`, `बेटा`).
+- **Clinical Preservation Shields (`context_rules.py`):** Preserves clinician names and qualifications (`Dr. Ramesh Srivastava (MD Medicine)`, `Dr. Anil Kumar MD Cardiology`, `Dr. Anil Kumar, MD, Cardiology`), eponyms (`Parkinson's disease`, `Addison's disease`), medications & doses (`Ramipril 5mg`, `Dolo 650 BD x 5 days`, `1-0-1`), hospital wards (`Ward 9 (Medicine)`), and complaint markers (`C/O fever`, `K/C/O`, `H/O`).
 
-### D. Privacy Layer & Quasi-Identifier Protection
-- **Per-Patient Date Shifting:** Computes a secret-keyed shift in `[-180, +180]` days (never 0) using `HMAC-SHA256(RAKSHA_SECRET, "shift|" + patient_key)`. All encounters for the same patient move by the exact same offset, preserving interval lengths and exact durations of hospital stays while defeating global shift-recovery attacks.
-- **Truthful Age Generalization:** Converts raw ages into 5-year intervals (`45-49`) that strictly contain the true age.
-- **Location & PIN Rollup:** Generalizes residential addresses and villages to district level and masks 6-digit PIN codes to their 3-digit regional prefix (`229***`), eliminating high-risk demographic combinations.
+## 8. Identity Resolution & Pseudonymization
 
-### E. Operational Security & Side-Channel Hygiene
-- **Zero Secret Leakage:** `RAKSHA_SECRET` is read directly from the environment and never written to disk, output records, logs, or reports.
-- **Zero PII Side-Channels:** Terminal output emits only aggregate file and record counts. Error reasons contain only safe ASCII identifiers without file contents or entity mentions.
+- **Conservative Clustering (`resolver.py`):** Merges on strong identifiers (Phone, Aadhaar, ABHA, Email, PAN, Insurance ID, and hospital-scoped MRN via dynamic `extract_issuer_prefix()`) guarded against shared facility IDs and demographic conflicts. Name-based merges require corroboration (relative name, DOB/derived age, village+age, or masked Aadhaar).
+- **Cryptographic Domain Separation (`pseudonymize.py`, `transforms.py`, `hidden_surfaces.py`):**
+  - Pseudonyms: `HMAC-SHA256(RAKSHA_SECRET, b"psn|" + patient_key)` → Crockford base32 `PSN-XXXXXX`
+  - Date shifts: `HMAC-SHA256(RAKSHA_SECRET, b"shift|" + patient_key)` → non-zero offset in `[-180, +180]` days
+  - Filenames: `HMAC-SHA256(RAKSHA_SECRET, b"fname|" + rel_path)` → `doc_<hex10><ext>`
 
----
+## 9. Privacy, Threat Model & Security Design
 
-## 5. Running & Verification Instructions
+- **Quasi-Identifier Generalization:** 5-year truthful age bands (`45-49`), village → district rollup, 6-digit PIN → 3-digit prefix (`229***`), house/landmark suppression, and per-patient secret date shifting (preserving exact Length of Stay).
+- **Side-Channel Hygiene:** `RAKSHA_SECRET` is read solely from the environment, never cached or logged; stdout emits aggregate counts only; zero `tempfile` usage; all processing runs in memory.
 
-### Requirements & Setup
-Python 3.10+ on CPU-only Linux/Windows/macOS:
+## 10. Installation, Configuration & Execution
+
 ```bash
-# Setup dependencies (network allowed during setup)
+# 1. Install offline-compatible dependencies (Python 3.10+, CPU-only)
 pip install -r requirements.txt
-```
 
-### Running the Firewall
-```bash
-# Execute the pipeline (offline, no network required)
+# 2. Run pipeline (offline, no network required)
 export RAKSHA_SECRET="practice"   # PowerShell: $env:RAKSHA_SECRET="practice"
-python main.py --input dev/input --output my_output
+python main.py --input dev/input --output output
 ```
 
-### Validating Contract & Performance
+Configuration lives in `config/policy.yaml` (`age_band_years: 5`, `date_shift_max_days: 180`, `min_group_size: 5`, `max_json_depth: 128`, `max_file_bytes: 52428800`).
+
+## 11. Testing & Evaluation Commands
+
 ```bash
-# Verify output contract format (must print CONTRACT OK)
-python validate_output.py --input dev/input --output my_output
+# Unit, adversarial, and regression test suite
+RAKSHA_SECRET=practice python -m pytest tests/ -q
 
-# Run practice self-check against ground truth
-python check_dev.py --output my_output --show 10
+# Official output contract validation
+python validate_output.py --input dev/input --output output
 
-# Run official pre-submission compliance audit
-python check_submission.py --repo .
+# Official practice self-check against dev/truth/truth.json
+python check_dev.py --output output --truth dev/truth/truth.json
+
+# Official pre-submission compliance audit (Linux)
+python3 check_submission.py --repo . --run
 ```
 
----
+## 12. Verified Benchmark Results (`dev/input`, 200 Files)
 
-## 6. Measured Benchmark Results
+All metrics below are from direct execution after the final code edit (see `FINAL_VALIDATION_REPORT.md`):
 
-Evaluated against the official small dataset profile (200 files, 48 patients, 4 hospitals, 4 canaries):
+| Metric | Source | Measured Result |
+|---|---|---|
+| **PII Leakage** | Official `check_dev.py` | **0 / 3,230 (`0.0%`)** (`latin 0.0%`, `deva 0.0%`, `hinglish 0.0%`, all 6 channels `0.0%`) |
+| **Canary Leakage** | Official `check_dev.py` | **0 / 4** (`0` leaks across content, filenames, logs, `report.json`) |
+| **Medical Preservation** | Official `check_dev.py` | **4,855 / 4,855 (`100.0%`)** |
+| **Identity Linkage** | Official `check_dev.py` | **Precision `1.00`, Recall `1.00`, F0.5 `1.00`**, `0` wrong merges |
+| **Raw Copies / Quarantine** | Official `check_dev.py` & `report.json` | **`0` raw copies** (`192` sanitized + `8` quarantined = `200/200`) |
+| **Output Contract** | Official `validate_output.py` | **`CONTRACT OK`** |
+| **Pre-Submit Audit** | Official `check_submission.py --repo . --run` | **`READY TO SUBMIT`** (deterministic, secret-keyed) |
+| **Test Suite** | Local `pytest tests/` | **`199 passed in 10.47s`** |
+| **Runtime & Memory** | `report.json` (Windows) / WSL2 2-CPU (`taskset -c 0,1`) | **`6.64s` / `31.0 MB` peak RSS** (limit `900s` / `4,096 MB`) |
+| **Official A1–A7 & B³ F1** | Official `raksha_eval` | **Not evaluated locally** (`raksha_eval` package not bundled in repo) |
 
-| Benchmark Metric | Starter Baseline | RAKSHA Implementation | Status / Target |
-|---|---|---|---|
-| **Contract Validation** | `CONTRACT OK` | `CONTRACT OK` | Compliant |
-| **Pre-Submit Audit** | Failed | `READY TO SUBMIT` | Passed |
-| **Files Processed** | 200 Total / 195 Sanitized / 5 Quarantined | 200 Total / 192 Sanitized / 8 Quarantined | Safe Fail-Closed |
-| **Raw Copies of Corrupt Files** | 0 | 0 | Zero Penalty |
-| **Medical Values Preserved** | 4,855 / 4,855 (100.0%) | 4,855 / 4,855 (100.0%) | Full Utility |
-| **Execution Wall Time** | 0.35s | 0.31s | Well under 15s budget |
-| **Peak Memory (RSS)** | < 120 MB | < 120 MB | Well under 4,096 MB |
-| **Repeat-Run Determinism** | Pass | Identical byte digest | Deterministic |
-| **Secret-Keyed Variance** | Pass | Shifted IDs & dates | Key-Dependent |
+## 13. Privacy–Utility Tradeoff, Limitations & Compliance
 
----
-
-## 7. Known Limitations & Future Enhancements
-
-1. **Free-Text OCR Artifacts:** Severely broken character substitutions in unstructured nursing notes with no context clues are conservatively left or quarantined if undecodable.
-2. **Ambiguous Homonyms:** When two patients in the same district share identical common names with no dates, phone numbers, or relative names in the note, RAKSHA assigns `patient: null` to prioritize precision over false merges.
-3. **Complex Cross-Encounter Relational Inference:** Deep multi-hop family tree inference across third-party documents is bounded to direct patronymic/matronymic/spousal relationships.
+- **Privacy–Utility Tradeoff:** 5-year age bands, district-level geography, 3-digit PIN prefixes, and per-patient date shifts eliminate direct/calendar linkage while preserving `100.0%` of medical probes and exact hospital Length of Stay (`5`, `12`, `10` days verified).
+- **Honest Limitations & Unverified Properties:**
+  1. **Adaptive k-Anonymity Not Active in Export:** `rakshak/privacy/k_anonymity.py` provides risk-measurement and widening/suppression helpers, and `cli.py` records summary metadata in `report.json`, but adaptive record-level age widening/PIN suppression is **not actively enforced** on `sanitized/` files to avoid degrading clinical utility.
+  2. **Official `raksha_eval` Not Bundled:** Proxy checks against `dev/attacker/` verify `0` direct exposures and `0/240` surviving registry villages, but exact official A1–A7 attack probabilities and `B³ F1` require the organizer's `raksha_eval` runner.
+  3. **Rule/Gazetteer Generalization:** Unseen regional names without contextual anchors may reduce recall on unseen hidden datasets.
+- **Competition Compliance:** `100%` CPU-only, offline, zero LLMs/transformers, zero network calls at runtime, zero hardcoded practice answers or hospital aliases.
+- **Future Work:** Integrate utility-bounded adaptive k-anonymity suppression for rare QI+diagnosis outliers and expand regional Indian name coverage.

@@ -1,0 +1,22 @@
+flowchart LR
+    IN["Input Directory<br/>CSV, TSV, JSON, FHIR R4, TXT, Misc"] --> S1
+
+    subgraph SENTINEL["1. SENTINEL — Ingestion & Fail-Closed Quarantine"]
+        S1["Encoding Detection<br/>UTF-8 / BOM / UTF-16 / cp1252"] --> S2["Format & Depth Guard<br/>Magic bytes, XML reject, JSON depth <= 128"]
+        S2 -->|Invalid / Unsupported| Q["Quarantine Log<br/>report.json (No raw copy)"]
+    end
+
+    S2 -->|Valid & Parsed| P1
+
+    subgraph IG["2. IDENTITY GUARD — Multilingual Detection & Linkage"]
+        P1["Pass 1: Evidence Extraction<br/>Structured keys, EN/HI/Hinglish, MRN issuer prefix"] --> P2["Conservative Clustering<br/>Strong IDs + Corroborated Name/Phonetics"]
+        P2 --> DET["Pass 2: Multilingual PII & Context Shields<br/>Doctors + Qualifications, Eponyms, Doses, Wards, Hidden Surfaces"]
+    end
+
+    DET --> V1
+
+    subgraph VAULT["3. VAULT — Pseudonymization & Privacy Transforms"]
+        V1["HMAC-SHA256 Domain Separation<br/>psn| / shift| / fname|"] --> V2["Generalization & Temporal Shift<br/>5-yr Age Bands, District Rollup, PIN***, +-180d Shift (LOS kept)"]
+    end
+
+    V2 --> OUT["Output Directory<br/>sanitized/ + report.json + records.jsonl"]

@@ -6,7 +6,7 @@ import re
 
 # Spans that MUST NOT be redacted as patient PII or relative PII
 PROTECTED_PATTERNS: list[tuple[str, re.Pattern[str]]] = [
-    # Doctors & clinicians (Latin + Devanagari)
+    # Doctors & clinicians (Latin + Devanagari), including trailing medical qualifications
     (
         "DOCTOR",
         re.compile(
@@ -15,6 +15,14 @@ PROTECTED_PATTERNS: list[tuple[str, re.Pattern[str]]] = [
             r"(?:[A-Z\u0900-\u097f][\w.\u0900-\u097f-]*)"
             r"(?:\s+(?!reviewed|advised|ordered|prescribed|saw|noted|took|ne|told|said|MD|MS|DNB|DM|MBBS\b)"
             r"[A-Z\u0900-\u097f][\w.\u0900-\u097f-]*){0,2}"
+            r"(?:"
+            r"[^\S\n]*\([^)\n]{0,40}\b(?:MD|MS|DNB|DM|MBBS|BAMS|BHMS|MCh|FRCS|MRCP)\b[^)\n]{0,40}\)"
+            r"|[^\S\n]*(?:,[^\S\n]*|[^\S\n]+)(?:MD|MS|DNB|DM|MBBS|BAMS|BHMS|MCh|FRCS|MRCP)\b"
+            r"(?:[^\S\n]*,?[^\S\n]*(?:Medicine|Surgery|Cardiology|Neurology|P(?:a)?ediatrics|Orthop(?:a)?edics|"
+            r"Gyn(?:a)?ecology|Obstetrics|Dermatology|Psychiatry|Radiology|Pathology|"
+            r"An(?:a)?esthesia|ENT|Ophthalmology|Urology|Nephrology|Gastroenterology|"
+            r"Pulmonology|Endocrinology|Oncology|General\s+Medicine|General\s+Surgery)\b)?"
+            r")?"
         ),
     ),
     # Medical eponyms & syndromes (never treat the eponym person name as a patient)
